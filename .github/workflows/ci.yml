@@ -1,0 +1,83 @@
+name: ci
+
+# POR QUE ISTO EXISTE, E POR QUE NASCE JUNTO COM O REPO
+#
+# O `schematize_cli_rs` viveu com 431 testes e NENHUM workflow que os rodasse. A Definition
+# of Done da casa exige "CI verde", e sem workflow a frase era verdadeira por vacuidade — a
+# pior maneira de uma regra ser cumprida. Custou uma passada dedicada para consertar.
+#
+# Este repo não repete isso: o CI entra no mesmo marco em que o código entra. Um repo que
+# nasce sem CI não "ganha CI depois"; ele ganha o hábito de fundir sem verificar.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Slint com backend winit + renderer femtovg precisa do X11/Wayland/fontconfig de
+      # DESENVOLVIMENTO para LINKAR, mesmo sem abrir janela nenhuma no CI.
+      #
+      # **Entrou junto com o segundo binário (ADR-0020), e não depois.** No dia em que a janela
+      # passou a morar neste repo, `cargo build` deixou de ser só o CLI: sem estas libs, o link
+      # do `schematize-overdev-gui` falha e leva junto um CI que nada tem a ver com janela.
+      - name: deps de sistema (Slint)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            pkg-config \
+            libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
+            libxkbcommon-dev libwayland-dev libgl1-mesa-dev \
+            libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libfontconfig1-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: fmt
+        run: cargo fmt --check
+
+      - name: clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      # TODO teste deste repo roda num HOME temporário, e a verificação é essa.
+      #
+      # O app lê o cadastro de contas de `~/.claude/schematize/`. Um teste que usasse o HOME
+      # real leria as contas de quem está rodando a suíte — e, pior, o `detect --add` as
+      # ESCREVERIA. No CI isso passaria despercebido (o runner é limpo); na máquina de quem
+      # desenvolve, cadastraria conta sem ninguém pedir.
+      - name: nenhum teste usa o HOME real
+        run: |
+          ! grep -rn 'env::var("HOME")\|env::home_dir\|dirs::home' tests/ --include='*.rs' \
+            || { echo "::error::um teste está lendo o HOME real"; exit 1; }
+          grep -q 'env("HOME"' tests/json_e_contrato.rs \
+            || { echo "::error::os testes têm de SETAR o HOME para um temporário"; exit 1; }
+
+      - name: testes
+        run: cargo test --all-targets
+
+      # A 2ª passada caça teste que depende de ordem ou de estado deixado pela 1ª. Barato, e
+      # já pegou flaky nesta casa.
+      - name: testes (segunda passada, caça a flaky)
+        run: cargo test --all-targets
+
+      # O build `--locked` prova que o Cargo.lock commitado RESOLVE — sem isto, um lock
+      # desatualizado só aparece na máquina de quem clona.
+      - name: build --locked
+        run: cargo build --locked

@@ -1,0 +1,65 @@
+[package]
+name = "schematize-overdev"
+version = "0.1.0"
+edition = "2021"
+description = "schematize Overdev: fila, trava, supervisor e gate — o motor de um run, sem precisar do hub."
+license = "MIT"
+
+[lib]
+name = "overdev_casa"
+path = "src/lib.rs"
+
+[[bin]]
+name = "schematize-overdev"
+path = "src/main.rs"
+
+# UM repo, DOIS binários (ADR-0020). A janela sai do MESMO commit que o CLI, então não há
+# `git clone` no release, nem pino cruzado para envelhecer, nem CI compilando contra uma versão
+# diferente da que o release usa — as três classes de falha que o repo de janela separado custou.
+# UM repo, DOIS binários (ADR-0020). A janela sai do MESMO commit que o CLI: sem `git clone` no
+# release, sem pino cruzado envelhecendo, sem CI compilando contra outra versão.
+# A JANELA entra no M4 desta fase — o `[[bin]]` dela nasce junto com o `src/gui/main.rs`.
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+# O `state.json` e o catálogo são serde; a janela consome o `--json` do binário.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Encoder PNG — gera o ícone do app A PARTIR DO CÓDIGO, sem asset externo nem rasterizador
+# (que falha em SVG). Mesma escolha dos irmãos.
+png = "0.18"
+# O estado do overdev (snapshots, histórico) mora em SQLite. É a dependência mais cara do
+# ecossistema — e a razão de ela sair do hub na E6: só este app a usa.
+rusqlite = { version = "0.31", features = ["bundled"] }
+# PTY de verdade para o agente: o `claude` detecta terminal e muda de comportamento sem um.
+# É o que permite ao supervisor VER o progresso em vez de esperar o processo terminar.
+portable-pty = "0.9.0"
+# Toolkit da JANELA. Mesmo backend das irmãs: winit cobre Wayland E X11, renderer femtovg, sem
+# skia (que exigiria cmake). Só o binário `-gui` o usa.
+slint = { version = "1.17", default-features = false, features = [
+    "std",
+    "compat-1-2",
+    "backend-winit",
+    "renderer-femtovg",
+    "accessibility",
+] }
+
+# Só para devolver o SIGPIPE ao padrão do Unix — ver a nota em `main.rs`.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+# Os testes de contrato leem o `stdout` do binário e PARSEIAM o JSON com um parser estrito —
+# um teste que casasse substring aprovaria JSON quebrado.
+serde_json = "1"
+
+# Perfil IDÊNTICO ao dos outros repos do app: o install.sh compila todos com um
+# `CARGO_TARGET_DIR` único, e cargo só reaproveita artefato se o perfil bater EXATAMENTE.
+[profile.release]
+strip = true
+opt-level = 3
+lto = "thin"
+
+[build-dependencies]
+# Compila o `.slint` da janela. Só o build precisa dele.
+slint-build = "1.17"
