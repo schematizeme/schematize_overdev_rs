@@ -172,8 +172,9 @@ pub enum Cmd {
         #[arg(long = "linka")]
         linka: Vec<String>,
     },
-    /// The question queue: open, answered-awaiting-review, and reviewed.
-    Questions {
+    /// The question queue: open, answered-awaiting-review, and reviewed (`questions` still works).
+    #[command(alias = "questions")]
+    Fila {
         /// Machine-readable output (the GUI reads this).
         #[arg(long)]
         json: bool,
@@ -230,6 +231,18 @@ pub enum Cmd {
     Load,
     /// Inject `/eng-index` into a `claude` session to (re)index the project.
     Index,
+    /// Desktop integration: put this app in the applications menu, or take it out.
+    ///
+    /// **O app instala a PRÓPRIA integração** (ADR-0019): quem baixa o binário do release ou
+    /// compila do fonte tem de conseguir o ícone também, sem passar pelo hub.
+    Desktop {
+        /// Write the icon and the .desktop entry.
+        #[arg(long)]
+        install: bool,
+        /// Remove the .desktop entry (the icons stay — they are inert and shared).
+        #[arg(long)]
+        remover: bool,
+    },
     /// Print the completion log (HH:MM:SS local + item) from .schematize/overdev/completions.json.
     Log,
 }

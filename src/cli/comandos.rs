@@ -255,6 +255,7 @@ pub fn executar(sub: Cmd) -> Result<(), String> {
                 overdev_casa::panel::export_obsidian(out)
             }
         },
+        Cmd::Desktop { install, remover } => crate::cli::desktop::executar(install, remover),
         Cmd::Progresso { json } => crate::cli::saidajson::progresso(json),
         Cmd::Hooks { repair, json } => crate::cli::saidajson::hooks(repair, json),
         Cmd::Status => {
@@ -283,7 +284,7 @@ pub fn executar(sub: Cmd) -> Result<(), String> {
             &auto,
             &linka,
         ),
-        Cmd::Questions { json } => crate::cli::perguntas::questions(json),
+        Cmd::Fila { json } => crate::cli::perguntas::questions(json),
         Cmd::Reply { alvo, escolhas, texto } => {
             crate::cli::perguntas::reply(&alvo, &escolhas, &texto)
         }

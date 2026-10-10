@@ -129,7 +129,7 @@ pub fn ask(
     Ok(())
 }
 
-/// `schematize overdev questions [--json]` — a fila.
+/// `schematize overdev fila [--json]` (apelido `questions`) — a fila.
 ///
 /// **Três grupos, e o do meio é o que existe por pedido explícito:** aberta, **respondida
 /// aguardando revisão da máquina**, e revisada. Juntar os dois últimos esconderia exatamente o
@@ -138,17 +138,8 @@ pub fn questions(json: bool) -> Result<(), String> {
     let raiz = raiz()?;
     let (todas, ruins) = pergunta::listar(&raiz);
     if json {
-        // Saída de MÁQUINA: a janela lê isto. Um objeto com as três listas, nunca prosa.
-        let v = serde_json::json!({
-            "abertas": todas.iter().filter(|p| p.aberta()).collect::<Vec<_>>(),
-            "aguardando_revisao": todas.iter().filter(|p| p.aguarda_revisao()).collect::<Vec<_>>(),
-            "revisadas": todas
-                .iter()
-                .filter(|p| p.resposta.as_ref().is_some_and(|r| r.revisada))
-                .collect::<Vec<_>>(),
-            "ilegiveis": ruins,
-        });
-        println!("{}", serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?);
+        // Saída de MÁQUINA: a janela lê isto. Escrita à mão em `saidajson`, contrato travado.
+        println!("{}", crate::cli::saidajson::documento_fila(&todas, &ruins));
         return Ok(());
     }
     for r in &ruins {

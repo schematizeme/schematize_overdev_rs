@@ -69,6 +69,19 @@ pub enum Kind {
 }
 
 impl Kind {
+    /// **O quê:** o slug estável do `kind` (o mesmo do `serde`: `sim_nao_outro`, …).
+    ///
+    /// **Onde:** o `--json` escrito à mão (`cli::saidajson`), que não passa pelo `derive`.
+    pub fn slug(self) -> &'static str {
+        match self {
+            Kind::Aprovar => "aprovar",
+            Kind::Escolha => "escolha",
+            Kind::Multipla => "multipla",
+            Kind::SimNaoOutro => "sim_nao_outro",
+            Kind::Livre => "livre",
+        }
+    }
+
     /// **O quê:** este `kind` exige lista de opções?
     ///
     /// **Onde:** [`Pergunta::validar`]. `aprovar` e `sim_nao_outro` têm opções IMPLÍCITAS (são
