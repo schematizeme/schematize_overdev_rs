@@ -212,3 +212,59 @@ fn texto_hostil_na_fila_e_json_valido() {
     assert_eq!(a["linka"][0], hostil);
     let _ = std::fs::remove_dir_all(&p);
 }
+
+/// **O CONTRATO do `checklist --json`:** chaves, tipos, classificação e o texto hostil.
+#[test]
+fn o_shape_do_checklist_e_contrato() {
+    let p = projeto("checklist");
+    com_run(&p);
+    let d = p.join(".schematize/overdev");
+    std::fs::write(
+        d.join("CHECKLIST.md"),
+        "- [x] a \"aspas\"\n- [ ] b\n- [H ] decida\n  - resposta: x\n- [H -] f\n",
+    )
+    .expect("checklist");
+    let v = rodar_json(&p, &["checklist", "--json"]);
+    assert_eq!(chaves(&v), ["itens", "modo", "objetivo", "raiz"]);
+    assert_eq!((v["modo"].as_str(), v["objetivo"].as_str()), (Some("active"), Some("x")));
+    let it = v["itens"].as_array().expect("lista");
+    assert_eq!(it.len(), 5);
+    assert_eq!(chaves(&it[0]), ["humano_n", "maquina", "sub", "texto", "tipo"]);
+    let tipos: Vec<&str> = it.iter().map(|i| i["tipo"].as_str().expect("slug")).collect();
+    assert_eq!(tipos, ["done", "open", "hopen", "nota", "hrec"]);
+    assert_eq!(it[0]["texto"], "a \"aspas\"");
+    assert_eq!((it[2]["humano_n"].as_u64(), it[2]["maquina"].as_bool()), (Some(1), Some(false)));
+    assert_eq!(it[3]["sub"], true);
+    let _ = std::fs::remove_dir_all(&p);
+}
+
+/// **Sem run, o checklist é vazio e `modo`/`objetivo` são `null`** — nunca `""`.
+#[test]
+fn checklist_sem_run_e_vazio_com_null() {
+    let p = projeto("checklist-vazio");
+    let v = rodar_json(&p, &["checklist", "--json"]);
+    assert!(v["modo"].is_null() && v["objetivo"].is_null(), "{v}");
+    assert!(v["itens"].as_array().expect("lista").is_empty());
+    let _ = std::fs::remove_dir_all(&p);
+}
+
+/// **O CONTRATO do `history --json`:** sem snapshot é lista vazia (e saída 0), com snapshot
+/// traz id, arquivo, epoch e bytes.
+#[test]
+fn o_shape_do_historico_e_contrato() {
+    let p = projeto("historico");
+    let v = rodar_json(&p, &["history", "--json"]);
+    assert_eq!(chaves(&v), ["snapshots"]);
+    assert!(v["snapshots"].as_array().expect("lista").is_empty());
+    com_run(&p);
+    let o =
+        Command::new(BIN).arg("snapshot").current_dir(&p).env("HOME", &p).output().expect("snap");
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let v = rodar_json(&p, &["history", "--json"]);
+    let s = &v["snapshots"][0];
+    assert_eq!(chaves(s), ["arquivo", "bytes", "em", "id"]);
+    assert!(
+        s["id"].is_i64() && s["em"].is_i64() && s["bytes"].is_i64() && s["arquivo"].is_string()
+    );
+    let _ = std::fs::remove_dir_all(&p);
+}

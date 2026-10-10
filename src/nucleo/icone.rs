@@ -1,4 +1,4 @@
-//! Ícone do **Database** desenhado EM CÓDIGO.
+//! Ícone do **Overdev** desenhado EM CÓDIGO.
 //!
 //! **O quê:** gera o PNG do app em qualquer tamanho, sem asset externo e sem rasterizador.
 //!
@@ -15,6 +15,7 @@
 //! - database: **âmbar**, faixas empilhadas com divisória de coluna (uma tabela).
 //! - git: **violeta**, tronco vertical com ramo em ângulo reto (um branch).
 //! - skills: **verde**, três blocos em ESCADA — peças que se encaixam.
+//! - overdev: **laranja**, a MESMA escada com outra cor — o run é uma sequência de degraus.
 //!
 //! **A forma não é enfeite.** A escada distingue-se da tabela do database (que é simétrica e
 //! tem divisória) e dos dois grafos, sem depender da cor — que é o que se perde primeiro em
@@ -30,8 +31,8 @@
 // Paleta: o MESMO fundo da casa, acento próprio.
 const BG_TL: [f32; 3] = [0x14 as f32, 0x16 as f32, 0x1c as f32]; // #14161c (canto sup-esq)
 const BG_BR: [f32; 3] = [0x1b as f32, 0x1e as f32, 0x27 as f32]; // #1b1e27 (canto inf-dir)
-const ACCENT: [f32; 3] = [0x3e as f32, 0xcf as f32, 0x8e as f32]; // #3ecf8e verde (Skills)
-const ACCENT_HI: [f32; 3] = [0x8c as f32, 0xf0 as f32, 0xc2 as f32]; // #8cf0c2 (o bloco de cima)
+const ACCENT: [f32; 3] = [0xf0 as f32, 0x8a as f32, 0x3c as f32]; // #f08a3c laranja (Overdev)
+const ACCENT_HI: [f32; 3] = [0xff as f32, 0xc2 as f32, 0x8a as f32]; // #ffc28a (o bloco de cima)
 
 /// Amostras por eixo no supersampling (SS×SS por pixel) → bordas suaves sem lib de imagem.
 const SS: u32 = 4;

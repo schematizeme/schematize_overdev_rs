@@ -103,9 +103,14 @@ pub fn overdev_snapshot() -> Result<(), String> {
 }
 
 /// `schematize overdev history [--limit N]` — tabela do histórico do projeto.
-pub fn overdev_history(limit: usize) -> Result<(), String> {
+pub fn overdev_history(limit: usize, json: bool) -> Result<(), String> {
     let project = cwd_project()?;
     let hist = overdevdb::history(&project, limit)?;
+    if json {
+        // Vazio é `{"snapshots":[]}` — a janela distingue "sem histórico" de erro (que sai 1).
+        println!("{}", crate::cli::saidajson::documento_historico(&hist));
+        return Ok(());
+    }
     if hist.is_empty() {
         println!("sem snapshots pra este projeto ainda (rode `schematize overdev snapshot`).");
         return Ok(());
@@ -294,7 +299,8 @@ pub fn executar(sub: Cmd) -> Result<(), String> {
         Cmd::Stop => overdev_casa::overdev::stop(),
         Cmd::Run { max, yes } => overdev_run(max, yes),
         Cmd::Snapshot => overdev_snapshot(),
-        Cmd::History { limit } => overdev_history(limit),
+        Cmd::History { limit, json } => overdev_history(limit, json),
+        Cmd::Checklist { json } => crate::cli::saidajson::checklist(json),
         Cmd::Restore { id } => overdev_restore(id),
         Cmd::Load => overdev_agent_cmd(overdev_casa::overdev::load_cmd()),
         Cmd::Index => overdev_agent_cmd(overdev_casa::overdev::index_cmd()),

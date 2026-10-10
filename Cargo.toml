@@ -16,9 +16,9 @@ path = "src/main.rs"
 # UM repo, DOIS binários (ADR-0020). A janela sai do MESMO commit que o CLI, então não há
 # `git clone` no release, nem pino cruzado para envelhecer, nem CI compilando contra uma versão
 # diferente da que o release usa — as três classes de falha que o repo de janela separado custou.
-# UM repo, DOIS binários (ADR-0020). A janela sai do MESMO commit que o CLI: sem `git clone` no
-# release, sem pino cruzado envelhecendo, sem CI compilando contra outra versão.
-# A JANELA entra no M4 desta fase — o `[[bin]]` dela nasce junto com o `src/gui/main.rs`.
+[[bin]]
+name = "schematize-overdev-gui"
+path = "src/gui/main.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
@@ -43,6 +43,10 @@ slint = { version = "1.17", default-features = false, features = [
     "renderer-femtovg",
     "accessibility",
 ] }
+
+# Hora LOCAL do card da pergunta ("24/09 20:59"): o offset do fuso não sai do `std`. MIT/Apache-2.0,
+# só o relógio (`clock`) — mesma versão e features que o hub já usava para isso.
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 # Só para devolver o SIGPIPE ao padrão do Unix — ver a nota em `main.rs`.
 [target.'cfg(unix)'.dependencies]

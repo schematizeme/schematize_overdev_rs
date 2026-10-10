@@ -1,0 +1,489 @@
+import { LineEdit, ScrollView } from "std-widgets.slint";
+
+// Janela do schematize-overdev. Casca visual fina: todos os dados vêm do binário
+// `schematize-overdev` (headless), por `--json`; as respostas do quiz voltam por
+// `schematize-overdev reply` (quem grava e valida é o CLI) e o que restaura estado abre TERMINAL.
+//
+// O TEMA e o `Btn` são cópia das janelas irmãs. Isso é PLATAFORMA (D4): não sabem o que é run,
+// fila ou checklist — sabem cor, borda e clique.
+
+global Th {
+    in-out property <bool> dark: true;
+    out property <color> bg:          dark ? #14161c : #e8ecf4;
+    out property <color> surface:     dark ? #1b1e27 : #ffffff;
+    out property <color> surface-2:   dark ? #222634 : #dce3f0;
+    out property <color> border:      dark ? #2b3040 : #bfc9dc;
+    out property <color> text:        dark ? #e6e9f2 : #12151d;
+    out property <color> text-dim:    dark ? #8a90a2 : #475062;
+    out property <color> accent:      #f08a3c;
+    out property <color> accent-soft: dark ? #4a3320 : #fde3cc;
+    out property <color> good:        #3ecf8e;
+    out property <color> warn:        #e6b23a;
+    out property <color> header-fg:   dark ? #ffb677 : #b4531a;
+}
+
+component Btn inherits Rectangle {
+    in property <string> label;
+    in property <bool> primary: false;
+    in property <bool> small: false;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: small ? 28px : 38px;
+    border-radius: 9px;
+    border-width: primary ? 0px : 1px;
+    border-color: Th.border;
+    background: !enabled ? Th.surface-2
+        : primary ? (touch.has-hover ? #f59d5a : Th.accent)
+        : (touch.has-hover ? Th.accent-soft : Th.surface);
+    opacity: enabled ? 1.0 : 0.5;
+    animate background { duration: 120ms; }
+    HorizontalLayout {
+        padding-left: small ? 10px : 16px;
+        padding-right: small ? 10px : 16px;
+        Text {
+            text: label;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+            color: primary ? #ffffff : Th.text;
+            font-size: small ? 12px : 13.5px;
+            font-weight: 600;
+        }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Caixa de marcar do `multipla`.
+component Marca inherits Rectangle {
+    in property <bool> checked;
+    callback toggled();
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    border-width: 1px;
+    border-color: checked ? Th.accent : Th.border;
+    background: checked ? Th.accent : Th.surface;
+    Text { text: checked ? "✓" : ""; color: #ffffff; font-size: 13px; font-weight: 800;
+           horizontal-alignment: center; vertical-alignment: center; }
+    TouchArea { mouse-cursor: pointer; clicked => { root.toggled(); } }
+}
+
+export struct QuizOpcaoUI {
+    id: string,
+    rotulo: string,
+    detalhe: string,
+    sugerida: bool,
+    marcada: bool,
+}
+
+export struct QuizUI {
+    id: string,
+    titulo: string,
+    contexto: string,
+    // O SLUG do kind (`escolha`, `aprovar`, `multipla`, `sim_nao_outro`, `livre`): cada um
+    // desenha um controle diferente, e a forma da pergunta na tela É a guarda.
+    kind: string,
+    destrava: string,
+    aberta: bool,
+    aguarda-revisao: bool,
+    resposta-texto: string,
+    respondida-em: string,
+    revisao: string,
+    opcoes: [QuizOpcaoUI],
+}
+
+export struct ItemUI {
+    tipo: string,
+    texto: string,
+    maquina: bool,
+    sub: bool,
+}
+
+export struct SnapUI {
+    id: int,
+    arquivo: string,
+    quando: string,
+    tamanho: string,
+}
+
+// Um botão de opção, com o detalhe embaixo e o destaque de sugestão.
+component OpcaoBtn inherits Rectangle {
+    in property <QuizOpcaoUI> op;
+    callback escolhida();
+    height: linha.preferred-height + 16px;
+    border-radius: 8px;
+    // A sugestão do agente é DESTAQUE, nunca pré-seleção: resposta que a pessoa não deu não é
+    // resposta dela. A borda grossa diz "eu recomendo"; o clique continua sendo dela.
+    border-width: op.sugerida ? 2px : 1px;
+    border-color: op.sugerida ? Th.accent : Th.border;
+    background: toca.has-hover ? Th.accent-soft : Th.surface;
+    toca := TouchArea { mouse-cursor: pointer; clicked => { root.escolhida(); } }
+    linha := VerticalLayout {
+        padding: 8px;
+        spacing: 2px;
+        HorizontalLayout {
+            spacing: 6px;
+            Text { text: op.rotulo; font-size: 13px; font-weight: 700; color: Th.text; wrap: word-wrap; }
+            if op.sugerida: Text { text: "sugerida"; font-size: 11px; font-weight: 700; color: Th.accent; }
+            Rectangle {}
+        }
+        if op.detalhe != "": Text { text: op.detalhe; font-size: 11.5px; color: Th.text-dim; wrap: word-wrap; }
+    }
+}
+
+// Um card de pergunta.
+component Card inherits Rectangle {
+    in property <QuizUI> q;
+    in-out property <string> outro;
+    callback responder(string);
+    callback responder-texto(string);
+    callback marcar(string);
+    callback confirmar();
+    callback feito();
+    callback recusar();
+    border-radius: 12px;
+    border-width: 1px;
+    // Aberta = precisa de você (âmbar). Aguardando revisão = a bola está com a máquina.
+    // Revisada = fechada. Três estados, três cores: juntar os dois últimos esconderia
+    // exatamente o estado que a pessoa pediu para existir.
+    border-color: q.aberta ? Th.warn : (q.aguarda-revisao ? Th.accent : Th.border);
+    background: Th.surface;
+    height: corpo.preferred-height;
+    corpo := VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+        Text { text: q.titulo; font-size: 13.5px; font-weight: 800; color: Th.text; wrap: word-wrap; }
+        if q.contexto != "": Text { text: q.contexto; font-size: 11.5px; color: Th.text-dim; wrap: word-wrap; }
+        if q.destrava != "": Text {
+            text: "destrava: " + q.destrava;
+            font-size: 11px; font-weight: 600; color: Th.accent; wrap: word-wrap;
+        }
+        if q.aberta && (q.kind == "escolha" || q.kind == "aprovar" || q.kind == "sim_nao_outro"):
+        VerticalLayout {
+            spacing: 6px;
+            for op in q.opcoes: OpcaoBtn { op: op; escolhida => { root.responder(op.id); } }
+        }
+        // `multipla`: marca sem enviar, e confirma — enviar a cada clique fecharia a pergunta
+        // no primeiro.
+        if q.aberta && q.kind == "multipla": VerticalLayout {
+            spacing: 6px;
+            for op in q.opcoes: HorizontalLayout {
+                spacing: 8px;
+                Marca { checked: op.marcada; toggled => { root.marcar(op.id); } }
+                VerticalLayout {
+                    spacing: 1px;
+                    Text { text: op.rotulo; font-size: 13px; font-weight: 600; color: Th.text; wrap: word-wrap; }
+                    if op.detalhe != "": Text { text: op.detalhe; font-size: 11px; color: Th.text-dim; wrap: word-wrap; }
+                }
+                Rectangle {}
+            }
+            HorizontalLayout {
+                Rectangle {}
+                Btn { label: "Confirmar"; small: true; primary: true; clicked => { root.confirmar(); } }
+            }
+        }
+        // O "outro" do sim_nao_outro e o `livre` inteiro: o único lugar em que texto é legítimo
+        // (o CLI recusa texto nos kinds de clique).
+        if q.aberta && (q.kind == "sim_nao_outro" || q.kind == "livre"): HorizontalLayout {
+            spacing: 6px;
+            LineEdit {
+                placeholder-text: q.kind == "livre" ? "sua resposta" : "outra resposta";
+                text <=> root.outro;
+                accepted => { root.responder-texto(root.outro); }
+            }
+            Btn { label: "Enviar"; small: true; clicked => { root.responder-texto(root.outro); } }
+        }
+        // "Recusar" CANCELA o item de máquina vinculado em vez de fingir que foi feito.
+        if q.aberta: HorizontalLayout {
+            spacing: 8px;
+            Rectangle {}
+            Btn { label: "Marcar feito"; small: true; clicked => { root.feito(); } }
+            Btn { label: "Recusar"; small: true; clicked => { root.recusar(); } }
+        }
+        if !q.aberta: VerticalLayout {
+            spacing: 3px;
+            Text { text: "respondeu: " + q.resposta-texto; font-size: 12.5px; font-weight: 700; color: Th.text; wrap: word-wrap; }
+            if q.respondida-em != "": Text { text: q.respondida-em; font-size: 11px; color: Th.text-dim; }
+            if q.aguarda-revisao: Text {
+                text: "aguardando revisão da máquina";
+                font-size: 11.5px; font-weight: 700; color: Th.accent; wrap: word-wrap;
+            }
+            if q.revisao != "": Text { text: "revisão: " + q.revisao; font-size: 11.5px; color: Th.text-dim; wrap: word-wrap; }
+        }
+    }
+}
+
+component Chip inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected;
+    callback clicked();
+    height: 26px;
+    width: t.preferred-width + 20px;
+    border-radius: 13px;
+    border-width: 1px;
+    border-color: selected ? Th.accent : Th.border;
+    background: selected ? Th.accent-soft : Th.surface;
+    t := Text { text: label; color: Th.text; font-size: 12px; font-weight: 600;
+                horizontal-alignment: center; vertical-alignment: center; }
+    TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+export component MainWindow inherits Window {
+    title: "schematize · overdev";
+    preferred-width: 980px;
+    preferred-height: 720px;
+    min-width: 680px;
+    min-height: 480px;
+    background: Th.bg;
+
+    in-out property <bool> dark <=> Th.dark;
+    // 0 = Perguntas · 1 = Checklist · 2 = Histórico
+    in-out property <int> aba: 0;
+    in-out property <string> versao: "—";
+    in-out property <string> projeto;
+
+    in-out property <string> objetivo;
+    in-out property <string> modo;
+    in-out property <string> resumo;
+    in-out property <int> feitos;
+    in-out property <int> abertos;
+    in-out property <int> iteracoes;
+    in-out property <int> teto;
+    in-out property <string> erro;
+    in-out property <string> msg;
+
+    in-out property <[QuizUI]> quiz;
+    in-out property <int> quiz-abertas;
+    in-out property <int> quiz-revisar;
+    in-out property <bool> quiz-erro;
+    in-out property <string> quiz-status;
+    in-out property <string> outro;
+
+    in-out property <[ItemUI]> itens;
+    in-out property <int> filtro: 0;
+    in-out property <int> pagina: 0;
+    in-out property <int> paginas: 1;
+    in-out property <int> total-filtrado: 0;
+
+    in-out property <[SnapUI]> snaps;
+    in-out property <string> snaps-erro;
+
+    callback recarregar();
+    callback alternar-tema();
+    callback responder(string, string);
+    callback responder-texto(string, string);
+    callback marcar(string, string);
+    callback confirmar-multipla(string);
+    callback marcar-feito(string);
+    callback recusar(string);
+    callback set-filtro(int);
+    callback set-pagina(int);
+    callback restaurar(int);
+
+    VerticalLayout {
+        padding: 18px;
+        spacing: 10px;
+
+        HorizontalLayout {
+            spacing: 10px;
+            VerticalLayout {
+                Text { text: "Overdev"; color: Th.header-fg; font-size: 20px; font-weight: 800; }
+                Text { text: root.versao; font-size: 11.5px; color: Th.text-dim; }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            Btn { label: "Perguntas" + (root.quiz-abertas > 0 ? " (" + root.quiz-abertas + ")" : ""); primary: root.aba == 0; clicked => { root.aba = 0; } }
+            Btn { label: "Checklist"; primary: root.aba == 1; clicked => { root.aba = 1; } }
+            Btn { label: "Histórico"; primary: root.aba == 2; clicked => { root.aba = 2; } }
+            Btn { label: "Reler"; clicked => { root.recarregar(); } }
+            Btn { label: root.dark ? "☾" : "☀"; clicked => { root.alternar-tema(); } }
+        }
+        Text { text: root.projeto; font-size: 11.5px; color: Th.text-dim; overflow: elide; }
+        Rectangle { height: 1px; background: Th.border; }
+
+        if root.erro != "": Rectangle {
+            height: le.preferred-height + 16px;
+            border-radius: 9px;
+            border-width: 1px;
+            border-color: Th.warn;
+            background: Th.surface;
+            le := HorizontalLayout {
+                padding: 8px;
+                Text { text: root.erro; font-size: 12.5px; color: Th.warn; wrap: word-wrap; }
+            }
+        }
+        if root.msg != "": Text { text: root.msg; font-size: 12px; color: Th.good; wrap: word-wrap; }
+
+        // ---- o PROGRESSO do run, sempre à vista ----
+        if root.objetivo != "": Text { text: root.objetivo; font-size: 16px; font-weight: 800; color: Th.text; wrap: word-wrap; }
+        HorizontalLayout {
+            spacing: 12px;
+            Text { text: root.resumo; font-size: 12.5px; font-weight: 700; color: Th.text; vertical-alignment: center; }
+            Rectangle { horizontal-stretch: 1; }
+            if root.modo != "": Text {
+                text: "ciclos " + root.iteracoes + (root.teto > 0 ? "/" + root.teto : "");
+                font-size: 12px; color: Th.text-dim; vertical-alignment: center;
+            }
+        }
+        if root.modo != "": Rectangle {
+            height: 8px;
+            border-radius: 4px;
+            background: Th.surface-2;
+            Rectangle {
+                x: 0;
+                height: 100%;
+                width: parent.width * root.feitos / max(1, root.feitos + root.abertos);
+                border-radius: 4px;
+                background: Th.good;
+            }
+        }
+
+        // ================= PERGUNTAS =================
+        if root.aba == 0: ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 8px;
+                HorizontalLayout {
+                    spacing: 14px;
+                    if root.quiz-abertas > 0: Text {
+                        text: root.quiz-abertas + " esperando você";
+                        font-size: 12.5px; font-weight: 700; color: Th.warn;
+                    }
+                    if root.quiz-revisar > 0: Text {
+                        text: root.quiz-revisar + " para a máquina revisar";
+                        font-size: 12.5px; font-weight: 700; color: Th.accent;
+                    }
+                    Rectangle {}
+                }
+                if root.quiz-status != "": Text {
+                    text: root.quiz-status;
+                    font-size: 11.5px; font-weight: 600;
+                    color: root.quiz-erro ? Th.warn : Th.good;
+                    wrap: word-wrap;
+                }
+                if root.quiz.length == 0 && !root.quiz-erro: Text {
+                    text: "Nenhuma pergunta na fila.";
+                    font-size: 12.5px; color: Th.text-dim;
+                }
+                for q in root.quiz: Card {
+                    q: q;
+                    outro <=> root.outro;
+                    responder(op) => { root.responder(q.id, op); }
+                    responder-texto(t) => { root.responder-texto(q.id, t); }
+                    marcar(op) => { root.marcar(q.id, op); }
+                    confirmar => { root.confirmar-multipla(q.id); }
+                    feito => { root.marcar-feito(q.id); }
+                    recusar => { root.recusar(q.id); }
+                }
+            }
+        }
+
+        // ================= CHECKLIST =================
+        if root.aba == 1: VerticalLayout {
+            vertical-stretch: 1;
+            spacing: 8px;
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+                Chip { label: "Todos"; selected: root.filtro == 0; clicked => { root.set-filtro(0); } }
+                Chip { label: "Abertos"; selected: root.filtro == 1; clicked => { root.set-filtro(1); } }
+                Chip { label: "Feitos"; selected: root.filtro == 2; clicked => { root.set-filtro(2); } }
+                Chip { label: "Em espera"; selected: root.filtro == 3; clicked => { root.set-filtro(3); } }
+                Chip { label: "Humanos"; selected: root.filtro == 4; clicked => { root.set-filtro(4); } }
+            }
+            ScrollView {
+                vertical-stretch: 1;
+                VerticalLayout {
+                    spacing: 5px;
+                    if root.total-filtrado == 0: Text {
+                        text: "Nenhum item neste filtro.";
+                        font-size: 12.5px; color: Th.text-dim;
+                    }
+                    for it in root.itens: HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+                        if it.sub: Rectangle { width: 24px; }
+                        if it.tipo == "nota": Text {
+                            text: it.texto;
+                            font-size: 12px; font-italic: true; color: Th.text-dim;
+                            wrap: word-wrap; horizontal-stretch: 1;
+                        }
+                        if it.tipo != "nota": Text {
+                            text: (it.tipo == "done" || it.tipo == "hdone") ? "✓"
+                                : it.tipo == "hresp" ? "="
+                                : (it.tipo == "hrec" || it.tipo == "cancel") ? "×"
+                                : it.tipo == "hold" ? "~" : "○";
+                            font-size: 13px; font-weight: 800;
+                            color: (it.tipo == "done" || it.tipo == "hdone" || it.tipo == "hresp") ? Th.good
+                                 : (it.tipo == "hrec" || it.tipo == "cancel") ? Th.text-dim
+                                 : it.tipo == "hold" ? Th.warn
+                                 : it.maquina ? Th.text-dim : Th.accent;
+                        }
+                        if it.tipo != "nota": Text {
+                            text: it.maquina ? "máq." : "humano";
+                            font-size: 10px; font-weight: 700;
+                            color: it.maquina ? Th.text-dim : Th.accent;
+                            vertical-alignment: center;
+                        }
+                        if it.tipo != "nota": Text {
+                            text: it.texto;
+                            font-size: 13px;
+                            color: (it.tipo == "done" || it.tipo == "hdone" || it.tipo == "hresp") ? Th.good
+                                 : (it.tipo == "hrec" || it.tipo == "cancel") ? Th.text-dim : Th.text;
+                            font-italic: it.tipo == "hrec" || it.tipo == "cancel";
+                            wrap: word-wrap; horizontal-stretch: 1;
+                        }
+                    }
+                }
+            }
+            if root.paginas > 1: HorizontalLayout {
+                spacing: 10px;
+                alignment: start;
+                Btn { label: "‹"; small: true; enabled: root.pagina > 0; clicked => { root.set-pagina(root.pagina - 1); } }
+                Text {
+                    text: (root.pagina + 1) + " / " + root.paginas + " · " + root.total-filtrado + " itens";
+                    font-size: 12.5px; color: Th.text-dim; vertical-alignment: center;
+                }
+                Btn { label: "›"; small: true; enabled: root.pagina < root.paginas - 1; clicked => { root.set-pagina(root.pagina + 1); } }
+            }
+        }
+
+        // ================= HISTÓRICO =================
+        if root.aba == 2: ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 6px;
+                Text {
+                    text: "Versões do CHECKLIST, do PLAN e do resto guardadas no banco local. Restaurar abre o terminal.";
+                    font-size: 12px; color: Th.text-dim; wrap: word-wrap;
+                }
+                if root.snaps-erro != "": Text { text: root.snaps-erro; font-size: 12px; color: Th.warn; wrap: word-wrap; }
+                if root.snaps.length == 0 && root.snaps-erro == "": Text {
+                    text: "Nenhum snapshot ainda — rode `schematize-overdev snapshot`.";
+                    font-size: 12px; color: Th.text-dim;
+                }
+                for s in root.snaps: Rectangle {
+                    height: 40px;
+                    border-radius: 8px;
+                    background: Th.surface;
+                    border-width: 1px;
+                    border-color: Th.border;
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 8px;
+                        spacing: 12px;
+                        Text { text: s.arquivo; font-size: 12.5px; font-weight: 600; color: Th.text; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                        Text { text: s.quando; font-size: 11.5px; color: Th.text-dim; vertical-alignment: center; }
+                        Text { text: s.tamanho; font-size: 11.5px; color: Th.text-dim; vertical-alignment: center; }
+                        VerticalLayout {
+                            alignment: center;
+                            Btn { label: "Restaurar"; small: true; clicked => { root.restaurar(s.id); } }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

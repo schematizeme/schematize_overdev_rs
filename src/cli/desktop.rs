@@ -63,7 +63,7 @@ pub fn executar(install: bool, remover: bool) -> Result<(), String> {
         None => println!(
             "  a janela (`{}`) não está instalada — por ora o ícone abre um terminal.\n  \
              Para ter a janela:  cargo install --git https://github.com/schematizeme/\
-             schematize_overdev_rs --bins",
+             schematize_overdev_rs --locked --force",
             desktop::GUI_BIN
         ),
     }

@@ -17,7 +17,7 @@
 //! **Com a janela instalada** (`schematize-overdev-gui`, que sai do mesmo repo pelo
 //! ADR-0020): `Exec=` aponta para ela e `Terminal=false`.
 //!
-//! **Sem a janela:** cai em `list` com `Terminal=true`. Um `.desktop` com
+//! **Sem a janela:** cai em `status` com `Terminal=true`. Um `.desktop` com
 //! `Terminal=false` apontando para uma CLI abriria um processo sem janela que termina no mesmo
 //! instante — o clique não faria **nada**, que é pior que não ter ícone. §37.48: o software se
 //! adapta ao clique que a pessoa deu.
@@ -64,18 +64,18 @@ pub fn resolver_gui(bin_proprio: &Path) -> Option<PathBuf> {
 /// **`Exec` com caminho ABSOLUTO nas duas formas**, pela razão do módulo `bin`.
 pub fn render(bin: &Path, icone: &Path, gui: Option<&Path>) -> String {
     // A janela não recebe subcomando: ela é uma janela, e fica aberta porque tem event loop.
-    // A CLI recebe `list`, que IMPRIME a resposta que esta tela existe para dar — o catálogo
-    // com o que está instalado. O binário puro imprimiria o help do clap e sairia.
+    // A CLI recebe `status`, que IMPRIME a resposta que esta tela existe para dar — em que pé
+    // está o run. O binário puro imprimiria o help do clap e sairia.
     let (exec, terminal) = match gui {
         Some(g) => (format!("{}", g.display()), "false"),
-        None => (format!("{} list", bin.display()), "true"),
+        None => (format!("{} status", bin.display()), "true"),
     };
     format!(
         "[Desktop Entry]\n\
          Type=Application\n\
-         Name=schematize Skills\n\
-         GenericName=Catálogo, instaladas, autoria\n\
-         Comment=O catálogo de skills, o que está instalado nesta máquina, e a edição\n\
+         Name=schematize Overdev\n\
+         GenericName=Run, checklist, perguntas\n\
+         Comment=O progresso do run, o checklist e as perguntas que esperam você\n\
          Exec={exec}\n\
          Icon={}\n\
          Terminal={terminal}\n\
@@ -180,7 +180,7 @@ mod tests {
         assert!(t.contains("Terminal=false"), "janela com Terminal=true abre terminal atrás");
         let exec = exec_de(&t);
         assert!(exec.ends_with("schematize-overdev-gui"), "{exec}");
-        assert!(!exec.contains(" list"), "a janela não recebe subcomando: {exec}");
+        assert!(!exec.contains(" status"), "a janela não recebe subcomando: {exec}");
     }
 
     /// **Sem a janela o ícone NÃO fica quebrado**: cai em terminal com algo que IMPRIME.
@@ -191,7 +191,7 @@ mod tests {
     fn sem_a_janela_o_icone_ainda_faz_alguma_coisa() {
         let t = render(Path::new("/b/schematize-overdev"), Path::new("/i/x.png"), None);
         assert!(t.contains("Terminal=true"), "CLI com Terminal=false é um clique que não faz nada");
-        assert!(exec_de(&t).contains("list"), "o clique tem de IMPRIMIR algo");
+        assert!(exec_de(&t).contains("status"), "o clique tem de IMPRIMIR algo");
     }
 
     /// **O `Icon=`, o `ID` e o nome do PNG são o mesmo nome.** Se divergirem, o menu mostra um

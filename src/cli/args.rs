@@ -115,6 +115,12 @@ pub enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// The checklist, item by item: type, text, machine/human (the window reads this).
+    Checklist {
+        /// Machine-readable output.
+        #[arg(long)]
+        json: bool,
+    },
     /// Mark the first open item matching the text as on-hold.
     Hold { texto: Vec<String> },
     /// Park a question (log it in the base txt) and mark the item on-hold.
@@ -224,6 +230,9 @@ pub enum Cmd {
     History {
         #[arg(long, default_value = "20")]
         limit: usize,
+        /// Machine-readable output (the window reads this).
+        #[arg(long)]
+        json: bool,
     },
     /// Restore a snapshot (by id) back to its original path.
     Restore { id: i64 },

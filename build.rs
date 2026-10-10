@@ -42,11 +42,6 @@ fn main() {
     println!("cargo:rerun-if-changed=.git/HEAD");
     println!("cargo:rerun-if-changed=.git/refs/heads");
 
-    // A JANELA entra no M4 desta fase. Até lá não há `.slint`, e mandar o `slint_build` num
-    // arquivo inexistente faria o BUILD DO CLI falhar por causa de uma tela que ainda não
-    // existe — o app tem de ser útil antes de ter janela.
-    if std::path::Path::new("ui/overdev.slint").exists() {
-        slint_build::compile("ui/overdev.slint").expect("compilar ui/overdev.slint");
-    }
+    slint_build::compile("ui/overdev.slint").expect("compilar ui/overdev.slint");
     println!("cargo:rerun-if-changed=ui");
 }

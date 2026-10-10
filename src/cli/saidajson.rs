@@ -190,6 +190,79 @@ pub fn documento_fila(todas: &[Pergunta], ilegiveis: &[String]) -> String {
     )
 }
 
+/// **O quê:** `checklist --json` — o objetivo, o modo e cada item do CHECKLIST.
+///
+/// **Onde:** a janela (lista do checklist e cabeçalho do run).
+///
+/// **Sem run, `modo` e `objetivo` são `null` e `itens` é `[]`** — "não há run aqui" é um estado
+/// da tela, diferente de "o run não tem item".
+pub fn checklist(json: bool) -> Result<(), String> {
+    let raiz = crate::cli::comandos::cwd_project()?;
+    let itens = overdev::itens::itens_at(&raiz);
+    let p = overdev::progresso::progress_at(&raiz);
+    let objetivo = overdev::progresso::objetivo_at(&raiz).unwrap_or_default();
+    if !json {
+        for i in &itens {
+            println!("{:<7} {}", i.tipo, i.texto);
+        }
+        return Ok(());
+    }
+    println!("{}", documento_checklist(&raiz.display().to_string(), &p.mode, &objetivo, &itens));
+    Ok(())
+}
+
+/// **O quê:** o documento `checklist --json` — função pura, para o teste travar o shape.
+///
+/// **Onde:** [`checklist`].
+pub fn documento_checklist(
+    raiz: &str,
+    modo: &str,
+    objetivo: &str,
+    itens: &[overdev::itens::Item],
+) -> String {
+    let linhas = itens
+        .iter()
+        .map(|i| {
+            format!(
+                "{{\"tipo\":\"{}\",\"texto\":\"{}\",\"maquina\":{},\"humano_n\":{},\"sub\":{}}}",
+                i.tipo,
+                esc(&i.texto),
+                i.maquina,
+                i.humano_n,
+                i.sub
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(
+        "{{\"raiz\":\"{}\",\"modo\":{},\"objetivo\":{},\"itens\":[{}]}}",
+        esc(raiz),
+        texto_ou_null(modo),
+        texto_ou_null(objetivo),
+        linhas
+    )
+}
+
+/// **O quê:** o documento `history --json` — os snapshots do projeto, do mais novo ao mais velho.
+///
+/// **Onde:** `comandos::overdev_history` com `--json`, e a janela.
+pub fn documento_historico(snaps: &[overdev_casa::overdevdb::SnapshotMeta]) -> String {
+    let l = snaps
+        .iter()
+        .map(|m| {
+            format!(
+                "{{\"id\":{},\"arquivo\":\"{}\",\"em\":{},\"bytes\":{}}}",
+                m.id,
+                esc(&m.file),
+                m.ts,
+                m.size
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("{{\"snapshots\":[{l}]}}")
+}
+
 /// **O quê:** o estado dos HOOKS do Claude Code: registrados? apontando para este binário?
 ///
 /// **Onde:** o `doctor` do hub, e a mão de quem quer conferir.
