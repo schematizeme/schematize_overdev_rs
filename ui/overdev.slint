@@ -344,6 +344,7 @@ export component MainWindow inherits Window {
         if root.aba == 0: ScrollView {
             vertical-stretch: 1;
             VerticalLayout {
+                alignment: start;
                 spacing: 8px;
                 HorizontalLayout {
                     spacing: 14px;
@@ -396,6 +397,7 @@ export component MainWindow inherits Window {
             ScrollView {
                 vertical-stretch: 1;
                 VerticalLayout {
+                    alignment: start;
                     spacing: 5px;
                     if root.total-filtrado == 0: Text {
                         text: "Nenhum item neste filtro.";
@@ -454,6 +456,7 @@ export component MainWindow inherits Window {
         if root.aba == 2: ScrollView {
             vertical-stretch: 1;
             VerticalLayout {
+                alignment: start;
                 spacing: 6px;
                 Text {
                     text: "Versões do CHECKLIST, do PLAN e do resto guardadas no banco local. Restaurar abre o terminal.";
