@@ -44,7 +44,7 @@ jobs:
           gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 \
             || gh release create "${GITHUB_REF_NAME}" \
                  --title "${GITHUB_REF_NAME}" \
-                 --notes "schematize overdev ${GITHUB_REF_NAME} — contas, repositórios e o que ainda não saiu da máquina."
+                 --notes "schematize overdev ${GITHUB_REF_NAME} — fila, trava, supervisor e gate de um run."
 
   binarios:
     needs: criar
@@ -53,12 +53,12 @@ jobs:
       matrix:
         include:
           - runner: ubuntu-latest
-            asset: schematize-overdev-linux-x86_64-x86_64-x86_64
+            asset: schematize-overdev-linux-x86_64
           # `macos-15` e nao `macos-14`: a 14 ja esta marcada DEPRECATED no
           # `actions/runner-images` (issue 13518), a caminho do mesmo destino da 13 descrito
           # logo abaixo. Trocar antes de a imagem sumir custa esta linha.
           - runner: macos-15
-            asset: schematize-overdev-macos-arm64-arm64-arm64
+            asset: schematize-overdev-macos-arm64
           # Intel CROSS-COMPILADO no runner arm64, e nao numa imagem macOS x64.
           #
           # A familia de imagens x64 do macOS e a que vem sendo aposentada, e o modo de falha
@@ -72,9 +72,9 @@ jobs:
           # E o mesmo desenho que o CLI, o updater e o market ja usam.
           - runner: macos-15
             target: x86_64-apple-darwin
-            asset: schematize-overdev-macos-x86_64-x86_64-x86_64
+            asset: schematize-overdev-macos-x86_64
           - runner: windows-latest
-            asset: schematize-overdev-windows-x86_64.exe-x86_64.exe-x86_64.exe
+            asset: schematize-overdev-windows-x86_64.exe
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -126,8 +126,6 @@ jobs:
           else
             cp "$dir/schematize-overdev" "${{ matrix.asset }}"
           fi
-          # **Sem `|| true` em nenhum dos `cp`.** Janela que não compilou tem de reprovar o
-          # job: publicar o CLI sem a janela é o release "verde com um asset a menos".
           # **Sem `|| true` em nenhum dos `cp`, e é deliberado.** Janela que não compilou tem de
           # reprovar o job: publicar o CLI sem a janela é o release "verde com um asset a menos"
           # que este repo foi desenhado para não repetir.
