@@ -1,0 +1,84 @@
+import { CaixaUI, ArquivoUI } from "tipos.slint";
+
+// O estado e as AÇÕES das abas que vieram da aba Overdev do hub: Execução, Caixa e Notas, mais a
+// resolução de item humano (modal). Um global só, porque a Rust escreve nele e as abas leem dele:
+// passar tudo por propriedades do `MainWindow` o deixaria com o dobro do tamanho.
+//
+// NADA aqui sabe regra de domínio. Cada callback vira UM comando do binário `schematize-overdev`
+// (ou a abertura do terminal), e quem valida é o CLI.
+export global Ov {
+    // ---- Execução: o run ----
+    // Há run neste diretório (progresso.modo != null). Sem run, Executar/Parar/Dividir ficam
+    // desligados: não há o que executar.
+    in-out property <bool> tem-run: false;
+    in-out property <bool> acompanhando: false;
+    in-out property <string> exec-status;
+    in-out property <bool> exec-erro: false;
+    // O guardrail de «Executar»: mostra a linha de comando EXATA que o terminal vai rodar.
+    in-out property <bool> exec-confirmar: false;
+    in-out property <string> exec-cmd;
+    callback executar-pedir();
+    callback executar-cancelar();
+    callback executar-confirmar();
+    callback parar();
+    callback acompanhar();
+    callback tick();
+    callback atualizar-tokens();
+
+    // ---- Execução: monitor ----
+    in-out property <string> tokens-linha;
+    in-out property <[string]> mon-abertos;
+    in-out property <[string]> mon-conclusoes;
+
+    // ---- Execução: coluna Sistema (governador de concorrência) ----
+    in-out property <int> sis-teto: 0;
+    in-out property <int> sis-livre: 0;
+    in-out property <int> sis-rodando: 0;
+    in-out property <string> sis-load;
+    in-out property <string> sis-erro;
+    callback rechecar();
+
+    // ---- Execução: split multiagent ----
+    in-out property <int> split-k: 2;
+    in-out property <string> split-plano;
+    in-out property <string> split-status;
+    in-out property <bool> split-erro: false;
+    callback split-mudar(int);
+    callback dividir(bool);
+
+    // ---- Resolver item humano (modal) ----
+    in-out property <bool> resolve-open: false;
+    in-out property <int> resolve-n: 0;
+    in-out property <string> resolve-item;
+    in-out property <bool> resolve-responder: true;
+    in-out property <string> resolve-texto;
+    in-out property <string> resolve-status;
+    in-out property <bool> resolve-erro: false;
+    // A faixa da aba Checklist: o que o CLI disse do último ato sobre um item.
+    in-out property <string> item-status;
+    in-out property <bool> item-erro: false;
+    callback item-feito(int);
+    callback resolver-pedir(int, string, bool);
+    callback resolver-cancelar();
+    callback resolver-confirmar();
+
+    // ---- Caixa de entrada ----
+    in-out property <[CaixaUI]> caixa-pendentes;
+    in-out property <[CaixaUI]> caixa-prontas;
+    in-out property <string> caixa-texto;
+    in-out property <string> caixa-status;
+    in-out property <bool> caixa-erro: false;
+    callback caixa-adicionar();
+    callback caixa-agente();
+    callback caixa-mesclar();
+
+    // ---- Notas e arquivos ----
+    in-out property <[ArquivoUI]> arquivos;
+    in-out property <string> notas-texto;
+    in-out property <string> nota-task;
+    in-out property <string> nota-correcao;
+    in-out property <string> notas-status;
+    in-out property <bool> notas-erro: false;
+    callback abrir-arquivo(string);
+    callback nota-adicionar(bool);
+}

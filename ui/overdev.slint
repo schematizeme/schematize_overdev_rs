@@ -1,235 +1,20 @@
 import { LineEdit, ScrollView } from "std-widgets.slint";
+import { Th, Btn, Chip } from "tema.slint";
+import { QuizUI, ItemUI, SnapUI } from "tipos.slint";
+import { Card } from "card.slint";
+import { Ov } from "estado.slint";
+import { AbaExecucao } from "aba_execucao.slint";
+import { AbaCaixa } from "aba_caixa.slint";
+import { AbaNotas } from "aba_notas.slint";
+import { ModalResolver } from "modal_resolver.slint";
 
 // Janela do schematize-overdev. Casca visual fina: todos os dados vêm do binário
-// `schematize-overdev` (headless), por `--json`; as respostas do quiz voltam por
-// `schematize-overdev reply` (quem grava e valida é o CLI) e o que restaura estado abre TERMINAL.
+// `schematize-overdev` (headless), por `--json`; as respostas voltam por `reply`/`answer`/`refuse`
+// (quem grava e valida é o CLI) e o que restaura estado ou spawna o `claude` abre TERMINAL.
 //
-// O TEMA e o `Btn` são cópia das janelas irmãs. Isso é PLATAFORMA (D4): não sabem o que é run,
-// fila ou checklist — sabem cor, borda e clique.
-
-global Th {
-    in-out property <bool> dark: true;
-    out property <color> bg:          dark ? #14161c : #e8ecf4;
-    out property <color> surface:     dark ? #1b1e27 : #ffffff;
-    out property <color> surface-2:   dark ? #222634 : #dce3f0;
-    out property <color> border:      dark ? #2b3040 : #bfc9dc;
-    out property <color> text:        dark ? #e6e9f2 : #12151d;
-    out property <color> text-dim:    dark ? #8a90a2 : #475062;
-    out property <color> accent:      #f08a3c;
-    out property <color> accent-soft: dark ? #4a3320 : #fde3cc;
-    out property <color> good:        #3ecf8e;
-    out property <color> warn:        #e6b23a;
-    out property <color> header-fg:   dark ? #ffb677 : #b4531a;
-}
-
-component Btn inherits Rectangle {
-    in property <string> label;
-    in property <bool> primary: false;
-    in property <bool> small: false;
-    in property <bool> enabled: true;
-    callback clicked();
-    height: small ? 28px : 38px;
-    border-radius: 9px;
-    border-width: primary ? 0px : 1px;
-    border-color: Th.border;
-    background: !enabled ? Th.surface-2
-        : primary ? (touch.has-hover ? #f59d5a : Th.accent)
-        : (touch.has-hover ? Th.accent-soft : Th.surface);
-    opacity: enabled ? 1.0 : 0.5;
-    animate background { duration: 120ms; }
-    HorizontalLayout {
-        padding-left: small ? 10px : 16px;
-        padding-right: small ? 10px : 16px;
-        Text {
-            text: label;
-            vertical-alignment: center;
-            horizontal-alignment: center;
-            color: primary ? #ffffff : Th.text;
-            font-size: small ? 12px : 13.5px;
-            font-weight: 600;
-        }
-    }
-    touch := TouchArea {
-        enabled: root.enabled;
-        mouse-cursor: root.enabled ? pointer : default;
-        clicked => { root.clicked(); }
-    }
-}
-
-// Caixa de marcar do `multipla`.
-component Marca inherits Rectangle {
-    in property <bool> checked;
-    callback toggled();
-    width: 20px;
-    height: 20px;
-    border-radius: 5px;
-    border-width: 1px;
-    border-color: checked ? Th.accent : Th.border;
-    background: checked ? Th.accent : Th.surface;
-    Text { text: checked ? "✓" : ""; color: #ffffff; font-size: 13px; font-weight: 800;
-           horizontal-alignment: center; vertical-alignment: center; }
-    TouchArea { mouse-cursor: pointer; clicked => { root.toggled(); } }
-}
-
-export struct QuizOpcaoUI {
-    id: string,
-    rotulo: string,
-    detalhe: string,
-    sugerida: bool,
-    marcada: bool,
-}
-
-export struct QuizUI {
-    id: string,
-    titulo: string,
-    contexto: string,
-    // O SLUG do kind (`escolha`, `aprovar`, `multipla`, `sim_nao_outro`, `livre`): cada um
-    // desenha um controle diferente, e a forma da pergunta na tela É a guarda.
-    kind: string,
-    destrava: string,
-    aberta: bool,
-    aguarda-revisao: bool,
-    resposta-texto: string,
-    respondida-em: string,
-    revisao: string,
-    opcoes: [QuizOpcaoUI],
-}
-
-export struct ItemUI {
-    tipo: string,
-    texto: string,
-    maquina: bool,
-    sub: bool,
-}
-
-export struct SnapUI {
-    id: int,
-    arquivo: string,
-    quando: string,
-    tamanho: string,
-}
-
-// Um botão de opção, com o detalhe embaixo e o destaque de sugestão.
-component OpcaoBtn inherits Rectangle {
-    in property <QuizOpcaoUI> op;
-    callback escolhida();
-    height: linha.preferred-height + 16px;
-    border-radius: 8px;
-    // A sugestão do agente é DESTAQUE, nunca pré-seleção: resposta que a pessoa não deu não é
-    // resposta dela. A borda grossa diz "eu recomendo"; o clique continua sendo dela.
-    border-width: op.sugerida ? 2px : 1px;
-    border-color: op.sugerida ? Th.accent : Th.border;
-    background: toca.has-hover ? Th.accent-soft : Th.surface;
-    toca := TouchArea { mouse-cursor: pointer; clicked => { root.escolhida(); } }
-    linha := VerticalLayout {
-        padding: 8px;
-        spacing: 2px;
-        HorizontalLayout {
-            spacing: 6px;
-            Text { text: op.rotulo; font-size: 13px; font-weight: 700; color: Th.text; wrap: word-wrap; }
-            if op.sugerida: Text { text: "sugerida"; font-size: 11px; font-weight: 700; color: Th.accent; }
-            Rectangle {}
-        }
-        if op.detalhe != "": Text { text: op.detalhe; font-size: 11.5px; color: Th.text-dim; wrap: word-wrap; }
-    }
-}
-
-// Um card de pergunta.
-component Card inherits Rectangle {
-    in property <QuizUI> q;
-    in-out property <string> outro;
-    callback responder(string);
-    callback responder-texto(string);
-    callback marcar(string);
-    callback confirmar();
-    callback feito();
-    callback recusar();
-    border-radius: 12px;
-    border-width: 1px;
-    // Aberta = precisa de você (âmbar). Aguardando revisão = a bola está com a máquina.
-    // Revisada = fechada. Três estados, três cores: juntar os dois últimos esconderia
-    // exatamente o estado que a pessoa pediu para existir.
-    border-color: q.aberta ? Th.warn : (q.aguarda-revisao ? Th.accent : Th.border);
-    background: Th.surface;
-    height: corpo.preferred-height;
-    corpo := VerticalLayout {
-        padding: 12px;
-        spacing: 8px;
-        Text { text: q.titulo; font-size: 13.5px; font-weight: 800; color: Th.text; wrap: word-wrap; }
-        if q.contexto != "": Text { text: q.contexto; font-size: 11.5px; color: Th.text-dim; wrap: word-wrap; }
-        if q.destrava != "": Text {
-            text: "destrava: " + q.destrava;
-            font-size: 11px; font-weight: 600; color: Th.accent; wrap: word-wrap;
-        }
-        if q.aberta && (q.kind == "escolha" || q.kind == "aprovar" || q.kind == "sim_nao_outro"):
-        VerticalLayout {
-            spacing: 6px;
-            for op in q.opcoes: OpcaoBtn { op: op; escolhida => { root.responder(op.id); } }
-        }
-        // `multipla`: marca sem enviar, e confirma — enviar a cada clique fecharia a pergunta
-        // no primeiro.
-        if q.aberta && q.kind == "multipla": VerticalLayout {
-            spacing: 6px;
-            for op in q.opcoes: HorizontalLayout {
-                spacing: 8px;
-                Marca { checked: op.marcada; toggled => { root.marcar(op.id); } }
-                VerticalLayout {
-                    spacing: 1px;
-                    Text { text: op.rotulo; font-size: 13px; font-weight: 600; color: Th.text; wrap: word-wrap; }
-                    if op.detalhe != "": Text { text: op.detalhe; font-size: 11px; color: Th.text-dim; wrap: word-wrap; }
-                }
-                Rectangle {}
-            }
-            HorizontalLayout {
-                Rectangle {}
-                Btn { label: "Confirmar"; small: true; primary: true; clicked => { root.confirmar(); } }
-            }
-        }
-        // O "outro" do sim_nao_outro e o `livre` inteiro: o único lugar em que texto é legítimo
-        // (o CLI recusa texto nos kinds de clique).
-        if q.aberta && (q.kind == "sim_nao_outro" || q.kind == "livre"): HorizontalLayout {
-            spacing: 6px;
-            LineEdit {
-                placeholder-text: q.kind == "livre" ? "sua resposta" : "outra resposta";
-                text <=> root.outro;
-                accepted => { root.responder-texto(root.outro); }
-            }
-            Btn { label: "Enviar"; small: true; clicked => { root.responder-texto(root.outro); } }
-        }
-        // "Recusar" CANCELA o item de máquina vinculado em vez de fingir que foi feito.
-        if q.aberta: HorizontalLayout {
-            spacing: 8px;
-            Rectangle {}
-            Btn { label: "Marcar feito"; small: true; clicked => { root.feito(); } }
-            Btn { label: "Recusar"; small: true; clicked => { root.recusar(); } }
-        }
-        if !q.aberta: VerticalLayout {
-            spacing: 3px;
-            Text { text: "respondeu: " + q.resposta-texto; font-size: 12.5px; font-weight: 700; color: Th.text; wrap: word-wrap; }
-            if q.respondida-em != "": Text { text: q.respondida-em; font-size: 11px; color: Th.text-dim; }
-            if q.aguarda-revisao: Text {
-                text: "aguardando revisão da máquina";
-                font-size: 11.5px; font-weight: 700; color: Th.accent; wrap: word-wrap;
-            }
-            if q.revisao != "": Text { text: "revisão: " + q.revisao; font-size: 11.5px; color: Th.text-dim; wrap: word-wrap; }
-        }
-    }
-}
-
-component Chip inherits Rectangle {
-    in property <string> label;
-    in property <bool> selected;
-    callback clicked();
-    height: 26px;
-    width: t.preferred-width + 20px;
-    border-radius: 13px;
-    border-width: 1px;
-    border-color: selected ? Th.accent : Th.border;
-    background: selected ? Th.accent-soft : Th.surface;
-    t := Text { text: label; color: Th.text; font-size: 12px; font-weight: 600;
-                horizontal-alignment: center; vertical-alignment: center; }
-    TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
-}
+// Uma tela por arquivo (teto de 750 linhas): tema.slint, card.slint (pergunta), aba_execucao,
+// aba_caixa, aba_notas, modal_resolver; o estado das abas novas mora em estado.slint (`Ov`).
+export { Ov }
 
 export component MainWindow inherits Window {
     title: "schematize · overdev";
@@ -240,7 +25,7 @@ export component MainWindow inherits Window {
     background: Th.bg;
 
     in-out property <bool> dark <=> Th.dark;
-    // 0 = Perguntas · 1 = Checklist · 2 = Histórico
+    // 0 = Perguntas · 1 = Checklist · 2 = Histórico · 3 = Execução · 4 = Caixa · 5 = Notas
     in-out property <int> aba: 0;
     in-out property <string> versao: "—";
     in-out property <string> projeto;
@@ -294,13 +79,20 @@ export component MainWindow inherits Window {
                 Text { text: root.versao; font-size: 11.5px; color: Th.text-dim; }
             }
             Rectangle { horizontal-stretch: 1; }
-            Btn { label: "Perguntas" + (root.quiz-abertas > 0 ? " (" + root.quiz-abertas + ")" : ""); primary: root.aba == 0; clicked => { root.aba = 0; } }
-            Btn { label: "Checklist"; primary: root.aba == 1; clicked => { root.aba = 1; } }
-            Btn { label: "Histórico"; primary: root.aba == 2; clicked => { root.aba = 2; } }
             Btn { label: "Reler"; clicked => { root.recarregar(); } }
             Btn { label: root.dark ? "☾" : "☀"; clicked => { root.alternar-tema(); } }
         }
         Text { text: root.projeto; font-size: 11.5px; color: Th.text-dim; overflow: elide; }
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            Btn { small: true; label: "Perguntas" + (root.quiz-abertas > 0 ? " (" + root.quiz-abertas + ")" : ""); primary: root.aba == 0; clicked => { root.aba = 0; } }
+            Btn { small: true; label: "Checklist"; primary: root.aba == 1; clicked => { root.aba = 1; } }
+            Btn { small: true; label: "Histórico"; primary: root.aba == 2; clicked => { root.aba = 2; } }
+            Btn { small: true; label: "Execução"; primary: root.aba == 3; clicked => { root.aba = 3; } }
+            Btn { small: true; label: "Caixa" + (Ov.caixa-pendentes.length > 0 ? " (" + Ov.caixa-pendentes.length + ")" : ""); primary: root.aba == 4; clicked => { root.aba = 4; } }
+            Btn { small: true; label: "Notas"; primary: root.aba == 5; clicked => { root.aba = 5; } }
+        }
         Rectangle { height: 1px; background: Th.border; }
 
         if root.erro != "": Rectangle {
@@ -385,6 +177,12 @@ export component MainWindow inherits Window {
         if root.aba == 1: VerticalLayout {
             vertical-stretch: 1;
             spacing: 8px;
+            if Ov.item-status != "": Text {
+                text: Ov.item-status;
+                font-size: 12px; font-weight: 600;
+                color: Ov.item-erro ? Th.warn : Th.good;
+                wrap: word-wrap;
+            }
             HorizontalLayout {
                 spacing: 6px;
                 alignment: start;
@@ -437,6 +235,17 @@ export component MainWindow inherits Window {
                             font-italic: it.tipo == "hrec" || it.tipo == "cancel";
                             wrap: word-wrap; horizontal-stretch: 1;
                         }
+                        // Ações do item HUMANO ABERTO: fechar, responder (libera a máquina) ou recusar
+                        // (cancela). O número é a posição entre os humanos abertos.
+                        if it.tipo == "hopen": VerticalLayout {
+                            alignment: start;
+                            HorizontalLayout {
+                                spacing: 4px;
+                                Btn { label: "Feito"; small: true; clicked => { Ov.item-feito(it.humano-n); } }
+                                Btn { label: "Responder"; small: true; clicked => { Ov.resolver-pedir(it.humano-n, it.texto, true); } }
+                                Btn { label: "Recusar"; small: true; clicked => { Ov.resolver-pedir(it.humano-n, it.texto, false); } }
+                            }
+                        }
                     }
                 }
             }
@@ -451,6 +260,11 @@ export component MainWindow inherits Window {
                 Btn { label: "›"; small: true; enabled: root.pagina < root.paginas - 1; clicked => { root.set-pagina(root.pagina + 1); } }
             }
         }
+
+        // ================= EXECUÇÃO / CAIXA / NOTAS =================
+        if root.aba == 3: AbaExecucao { vertical-stretch: 1; }
+        if root.aba == 4: AbaCaixa { vertical-stretch: 1; }
+        if root.aba == 5: AbaNotas { vertical-stretch: 1; }
 
         // ================= HISTÓRICO =================
         if root.aba == 2: ScrollView {
@@ -488,5 +302,20 @@ export component MainWindow inherits Window {
                 }
             }
         }
+    }
+
+    // «Acompanhar»: enquanto ligado, o monitor leve relê o progresso a cada 3 s (os tokens, mais
+    // pesados, só quando a pessoa pede). A Rust desliga quando o run termina.
+    Timer {
+        interval: 3s;
+        running: Ov.acompanhando;
+        triggered => { Ov.tick(); }
+    }
+
+    if Ov.resolve-open: ModalResolver {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
     }
 }

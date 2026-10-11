@@ -73,6 +73,39 @@ pub fn abrir(comando: &str) -> bool {
     false
 }
 
+/// **O quê:** qual programa abre `caminho` no editor do usuário, e com que argumentos. PURA.
+///
+/// **Onde:** [`abrir_arquivo`]. O VS Code (`code`) primeiro, porque é o que a aba do hub usava e
+/// o que a pessoa que edita PLAN.md costuma ter; sem ele, o `xdg-open` entrega ao editor padrão
+/// do desktop para `.md`. Separada do spawn para o teste dizer o que o clique roda.
+pub fn plano_do_editor(caminho: &str, tem_code: bool) -> (&'static str, Vec<String>) {
+    if tem_code {
+        ("code", vec![caminho.to_string()])
+    } else {
+        ("xdg-open", vec![caminho.to_string()])
+    }
+}
+
+/// **O quê:** abre um ARQUIVO no editor do usuário, desacoplado desta janela.
+///
+/// **Onde:** «Abrir no editor» da aba Notas. **A janela não edita arquivo (D6):** quem edita é o
+/// editor da pessoa, e quem grava é ele. Erro devolve o CAMINHO — sem editor ainda dá para abrir
+/// à mão (§37.48), e um "não consegui" seco seria um beco sem saída.
+pub fn abrir_arquivo(caminho: &str) -> Result<String, String> {
+    let (prog, args) = plano_do_editor(caminho, existe("code"));
+    if !existe(prog) {
+        return Err(format!("não achei `{prog}` para abrir. Abra à mão: {caminho}"));
+    }
+    std::process::Command::new(prog)
+        .args(&args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(|_| format!("aberto no editor ({prog}): {caminho}"))
+        .map_err(|e| format!("não consegui rodar `{prog}` ({e}). Abra à mão: {caminho}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -91,6 +124,15 @@ mod tests {
         assert_eq!(nomes[0], "x-terminal-emulator", "a escolha da pessoa vem primeiro");
         let kitty = TERMINAIS.iter().find(|(n, _)| *n == "kitty").unwrap();
         assert!(kitty.1.is_empty(), "o kitty recebe o comando direto, sem flag");
+    }
+
+    /// **O clique em «Abrir no editor» roda isto:** `code <arquivo>` se houver, senão `xdg-open`.
+    /// O caminho vai como UM argumento (espaço no nome não o parte) e nunca por shell.
+    #[test]
+    fn o_editor_recebe_o_caminho_como_um_argumento() {
+        let c = "/p/meu projeto/.schematize/overdev/PLAN.md";
+        assert_eq!(plano_do_editor(c, true), ("code", vec![c.to_string()]));
+        assert_eq!(plano_do_editor(c, false), ("xdg-open", vec![c.to_string()]));
     }
 
     /// `existe` responde `false` para o que não existe, sem entrar em pânico e sem imprimir

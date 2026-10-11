@@ -241,6 +241,9 @@ pub struct Item {
     pub texto: String,
     pub maquina: bool,
     pub sub: bool,
+    /// Posição entre os humanos ABERTOS (1-based) — o argumento de `human --done`/`answer`/
+    /// `refuse`; 0 nos demais.
+    pub humano_n: usize,
 }
 
 /// O checklist inteiro do run, mais o cabeçalho que a janela mostra.
@@ -267,6 +270,7 @@ pub fn ler_checklist(texto: &str) -> Result<Checklist, String> {
             texto: i.get("texto").and_then(|x| x.as_str()).unwrap_or("").to_string(),
             maquina: i.get("maquina").and_then(|x| x.as_bool()).unwrap_or(false),
             sub: i.get("sub").and_then(|x| x.as_bool()).unwrap_or(false),
+            humano_n: i.get("humano_n").and_then(|x| x.as_u64()).unwrap_or(0) as usize,
         })
         .collect();
     Ok(Checklist {
@@ -451,6 +455,22 @@ mod tests {
         assert_eq!(tamanho(-9), "0 B");
     }
 
+    /// **O número do humano aberto vem do JSON** — é ele que vira `human --done N`/`answer N`.
+    /// Ausente (CLI antigo) é 0, e 0 não é índice: a ação recusa em vez de fechar o item errado.
+    #[test]
+    fn checklist_traz_o_numero_do_humano_aberto() {
+        let c = ler_checklist(
+            r#"{"modo":"active","objetivo":null,"itens":[
+            {"tipo":"hopen","texto":"A","maquina":false,"humano_n":1,"sub":false},
+            {"tipo":"hopen","texto":"B","maquina":false,"humano_n":2,"sub":false},
+            {"tipo":"hdone","texto":"C","maquina":false,"humano_n":0,"sub":false},
+            {"tipo":"hopen","texto":"sem número","maquina":false,"sub":false}]}"#,
+        )
+        .expect("lê");
+        let ns: Vec<usize> = c.itens.iter().map(|i| i.humano_n).collect();
+        assert_eq!(ns, [1, 2, 0, 0]);
+    }
+
     fn sample(n: usize) -> Vec<Item> {
         let kinds = ["done", "open", "hold", "hopen", "hdone"];
         (0..n)
@@ -459,6 +479,7 @@ mod tests {
                 texto: format!("item {i}"),
                 maquina: i % 5 < 3,
                 sub: false,
+                humano_n: 0,
             })
             .collect()
     }

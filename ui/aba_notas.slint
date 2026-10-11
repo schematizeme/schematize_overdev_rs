@@ -1,0 +1,55 @@
+import { ScrollView, LineEdit } from "std-widgets.slint";
+import { Th, Btn } from "tema.slint";
+import { Ov } from "estado.slint";
+
+// Aba NOTAS E ARQUIVOS: abrir PLAN.md / CHECKLIST.md / NOTAS.md no editor do usuário, e anexar
+// um ponto por task ou um prompt de correção.
+//
+// A janela NÃO edita arquivo (D6): «Abrir no editor» entrega o caminho ao editor do usuário, e a
+// nota entra por `schematize-overdev note` — quem grava é o CLI.
+export component AbaNotas inherits ScrollView {
+    VerticalLayout {
+        alignment: start;
+        spacing: 10px;
+        Text { text: "Arquivos do run"; font-size: 13px; font-weight: 800; color: Th.text; }
+        for a in Ov.arquivos: Rectangle {
+            height: 40px;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: Th.border;
+            background: Th.surface;
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 8px;
+                spacing: 12px;
+                Text { text: a.nome; font-size: 12.5px; font-weight: 700; color: Th.text; vertical-alignment: center; min-width: 110px; }
+                Text { text: a.existe ? a.caminho : "ainda não existe"; font-size: 11px; color: Th.text-dim; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                VerticalLayout {
+                    alignment: center;
+                    Btn { label: "Abrir no editor"; small: true; enabled: a.existe; clicked => { Ov.abrir-arquivo(a.caminho); } }
+                }
+            }
+        }
+        Text { text: "Ponto por task"; font-size: 13px; font-weight: 800; color: Th.text; }
+        HorizontalLayout {
+            spacing: 6px;
+            LineEdit { placeholder-text: "um ponto que o agente deve tratar numa task"; text <=> Ov.nota-task; accepted => { Ov.nota-adicionar(false); } }
+            Btn { label: "Anexar"; small: true; enabled: Ov.nota-task != ""; clicked => { Ov.nota-adicionar(false); } }
+        }
+        Text { text: "Prompt de correção"; font-size: 13px; font-weight: 800; color: Th.text; }
+        HorizontalLayout {
+            spacing: 6px;
+            LineEdit { placeholder-text: "o que o agente fez errado e como corrigir"; text <=> Ov.nota-correcao; accepted => { Ov.nota-adicionar(true); } }
+            Btn { label: "Anexar"; small: true; enabled: Ov.nota-correcao != ""; clicked => { Ov.nota-adicionar(true); } }
+        }
+        if Ov.notas-status != "": Text {
+            text: Ov.notas-status;
+            font-size: 12px; font-weight: 600;
+            color: Ov.notas-erro ? Th.warn : Th.good;
+            wrap: word-wrap;
+        }
+        Text { text: "Notas já anexadas"; font-size: 13px; font-weight: 800; color: Th.text; }
+        if Ov.notas-texto == "": Text { text: "nenhuma nota ainda."; font-size: 12px; color: Th.text-dim; }
+        if Ov.notas-texto != "": Text { text: Ov.notas-texto; font-size: 12px; color: Th.text; wrap: word-wrap; }
+    }
+}

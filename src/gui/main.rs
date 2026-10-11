@@ -18,14 +18,23 @@
 //! inválida nem se quiser. O que REGRAVA arquivos (restaurar um snapshot) vai ao TERMINAL, onde
 //! o comando aparece antes de rodar. Esta janela nunca chama `fs::write`.
 
+#[macro_use]
+mod macros;
+mod caixa;
 mod cli;
+mod comandos;
+mod execucao;
+mod leituras;
+mod notas;
+mod ponte;
+mod resolver;
 mod telas;
 mod terminal;
 
 slint::include_modules!();
 
-use slint::{ModelRc, SharedString, VecModel};
-use std::cell::RefCell;
+use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -40,6 +49,10 @@ struct Estado {
     cards: RefCell<Vec<telas::Card>>,
     /// O que a pessoa marcou num `multipla`, entre o clique e o Confirmar.
     marcadas: RefCell<HashMap<String, Vec<String>>>,
+    /// O «Acompanhar» já viu o run `active`? Só depois disso um run parado o encerra.
+    visto_ativo: Cell<bool>,
+    /// `(feitos, abertos)` do último ciclo do «Acompanhar»: mudou, relê o resto.
+    contagem: Cell<(u64, u64)>,
 }
 
 /// **O quê:** um [`telas::Card`] → a struct que o `.slint` consome.
@@ -127,19 +140,20 @@ fn publicar_checklist(w: &MainWindow, e: &Estado) {
                 texto: i.texto.clone().into(),
                 maquina: i.maquina,
                 sub: i.sub,
+                humano_n: i.humano_n as i32,
             })
             .collect::<Vec<_>>(),
     )));
 }
 
-/// **O quê:** relê progresso, checklist, fila e histórico, e escreve a tela.
+/// **O quê:** relê o `progresso --json` e escreve o cabeçalho (resumo, modo, contagens, ciclos).
 ///
-/// **Onde:** a abertura, o «Reler» e depois de cada resposta.
+/// **Onde:** [`recarregar`] e o ciclo do «Acompanhar» (que só precisa desta leitura, barata).
 ///
-/// **São QUATRO documentos, e a falha de um não apaga os outros**; cada erro vai para o lugar
-/// dele (o do progresso e do checklist, no topo; o da fila, na aba Perguntas).
-fn recarregar(w: &MainWindow, e: &Estado) {
-    let mut erros: Vec<String> = Vec::new();
+/// **Sem run (`modo` nulo) `tem_run` fica `false`:** é o que desliga Executar/Parar/Dividir. O
+/// erro volta ao chamador, que o mostra — e `tem_run` cai para `false` também, porque ação sobre
+/// um run que não se conseguiu ler não é ação que se deva oferecer.
+fn publicar_progresso(w: &MainWindow, e: &Estado) -> Result<telas::Progresso, String> {
     match cli::rodar(&e.dir, &["progresso", "--json"]).and_then(|t| telas::ler_progresso(&t)) {
         Ok(p) => {
             w.set_resumo(telas::resumo(&p).into());
@@ -148,12 +162,28 @@ fn recarregar(w: &MainWindow, e: &Estado) {
             w.set_abertos(p.abertos as i32);
             w.set_iteracoes(p.iteracoes as i32);
             w.set_teto(p.teto.unwrap_or(0) as i32);
+            w.global::<Ov>().set_tem_run(p.modo.is_some());
+            Ok(p)
         }
         Err(err) => {
             w.set_resumo(SharedString::new());
             w.set_modo(SharedString::new());
-            erros.push(err);
+            w.global::<Ov>().set_tem_run(false);
+            Err(err)
         }
+    }
+}
+
+/// **O quê:** relê progresso, checklist, fila, histórico e as abas Execução/Caixa/Notas, e escreve a tela.
+///
+/// **Onde:** a abertura, o «Reler» e depois de cada resposta.
+///
+/// **São QUATRO documentos, e a falha de um não apaga os outros**; cada erro vai para o lugar
+/// dele (o do progresso e do checklist, no topo; o da fila, na aba Perguntas).
+fn recarregar(w: &MainWindow, e: &Estado) {
+    let mut erros: Vec<String> = Vec::new();
+    if let Err(err) = publicar_progresso(w, e) {
+        erros.push(err);
     }
     match cli::rodar(&e.dir, &["checklist", "--json"]).and_then(|t| telas::ler_checklist(&t)) {
         Ok(c) => {
@@ -194,6 +224,10 @@ fn recarregar(w: &MainWindow, e: &Estado) {
             w.set_snaps_erro(err.into());
         }
     }
+    execucao::atualizar(w, e);
+    execucao::atualizar_monitor(w, e);
+    caixa::atualizar(w, e);
+    notas::atualizar(w, e);
 }
 
 /// **O quê:** roda um subcomando da fila (`reply`/`refuse`), mostra o resultado e RELÊ a fila.
@@ -251,7 +285,8 @@ fn dir_dos_args(args: &[String]) -> Option<PathBuf> {
     }
 }
 
-/// **O quê:** a aba pedida em `--aba <nome>`: `0` Perguntas, `1` Checklist, `2` Histórico.
+/// **O quê:** a aba pedida em `--aba <nome>`: `0` Perguntas, `1` Checklist, `2` Histórico,
+/// `3` Execução, `4` Caixa, `5` Notas.
 ///
 /// **Onde:** [`main`]. Pelo NOME, e nome desconhecido cai nas Perguntas — o número é detalhe
 /// interno do `.slint`. Função PURA.
@@ -260,6 +295,9 @@ fn aba_dos_args(args: &[String]) -> i32 {
     match args.get(i + 1).map(String::as_str) {
         Some("checklist") => 1,
         Some("historico") | Some("history") => 2,
+        Some("execucao") => 3,
+        Some("caixa") => 4,
+        Some("notas") => 5,
         _ => 0,
     }
 }
@@ -347,6 +385,11 @@ fn ligar(w: &MainWindow, e: &Rc<Estado>) {
         // REGRAVA arquivos do projeto: vai ao terminal (D6).
         no_terminal(&w, e, &["restore", &id.to_string()]);
     });
+    // As abas que vieram do hub: cada uma registra os próprios callbacks do global `Ov`.
+    resolver::ligar(w, e);
+    execucao::ligar(w, e);
+    caixa::ligar(w, e);
+    notas::ligar(w, e);
 }
 
 fn main() -> Result<(), slint::PlatformError> {
@@ -367,6 +410,8 @@ fn main() -> Result<(), slint::PlatformError> {
         itens: RefCell::new(Vec::new()),
         cards: RefCell::new(Vec::new()),
         marcadas: RefCell::new(HashMap::new()),
+        visto_ativo: Cell::new(false),
+        contagem: Cell::new((0, 0)),
     });
 
     let w = MainWindow::new()?;
@@ -395,6 +440,9 @@ mod tests {
         assert_eq!(aba_dos_args(&v(&["--aba", "checklist"])), 1);
         assert_eq!(aba_dos_args(&v(&["--aba", "historico"])), 2);
         assert_eq!(aba_dos_args(&v(&["--aba", "history"])), 2);
+        assert_eq!(aba_dos_args(&v(&["--aba", "execucao"])), 3);
+        assert_eq!(aba_dos_args(&v(&["--aba", "caixa"])), 4);
+        assert_eq!(aba_dos_args(&v(&["--aba", "notas"])), 5);
         assert_eq!(aba_dos_args(&v(&["--aba", "perguntas"])), 0);
         assert_eq!(aba_dos_args(&v(&[])), 0);
         // Nome inventado não abre aba inventada, e a flag no fim da linha não panica.
@@ -424,6 +472,55 @@ mod tests {
             .collect()
     }
 
+    /// **Todos** os fontes de produção da janela. Um arquivo novo que não entre aqui escapa dos
+    /// varredores — por isso o teste `a_lista_de_fontes_cobre_a_pasta` confere com o disco.
+    fn fontes_da_janela() -> Vec<(&'static str, &'static str)> {
+        vec![
+            ("main.rs", include_str!("main.rs")),
+            ("cli.rs", include_str!("cli.rs")),
+            ("telas.rs", include_str!("telas.rs")),
+            ("terminal.rs", include_str!("terminal.rs")),
+            ("macros.rs", include_str!("macros.rs")),
+            ("ponte.rs", include_str!("ponte.rs")),
+            ("comandos.rs", include_str!("comandos.rs")),
+            ("leituras.rs", include_str!("leituras.rs")),
+            ("resolver.rs", include_str!("resolver.rs")),
+            ("execucao.rs", include_str!("execucao.rs")),
+            ("caixa.rs", include_str!("caixa.rs")),
+            ("notas.rs", include_str!("notas.rs")),
+        ]
+    }
+
+    /// A lista acima cobre CADA `.rs` da pasta da janela (e nenhum a mais).
+    #[test]
+    fn a_lista_de_fontes_cobre_a_pasta() {
+        let mut no_disco: Vec<String> =
+            std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/src/gui"))
+                .expect("ler src/gui")
+                .filter_map(|e| e.ok()?.file_name().into_string().ok())
+                .filter(|n| n.ends_with(".rs"))
+                .collect();
+        no_disco.sort();
+        let mut lista: Vec<String> =
+            fontes_da_janela().iter().map(|(n, _)| n.to_string()).collect();
+        lista.sort();
+        assert_eq!(lista, no_disco, "arquivo novo na janela: ponha-o em `fontes_da_janela`");
+    }
+
+    /// **Nenhum arquivo da janela passa de 750 linhas** (o teto da casa), e o `.slint` também —
+    /// a janela é dividida por tela justamente para isso.
+    #[test]
+    fn nenhum_arquivo_da_janela_passa_de_750_linhas() {
+        for (nome, fonte) in fontes_da_janela() {
+            assert!(fonte.lines().count() <= 750, "{nome} tem {} linhas", fonte.lines().count());
+        }
+        let ui = std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/ui")).expect("ler ui");
+        for f in ui.filter_map(|e| e.ok()) {
+            let n = std::fs::read_to_string(f.path()).expect("ler .slint").lines().count();
+            assert!(n <= 750, "{:?} tem {n} linhas", f.file_name());
+        }
+    }
+
     /// **A casca não sabe NADA do domínio** (D4 do ADR-0016): a janela só usa
     /// `overdev_casa::nucleo::procedencia` (plataforma) e fala com o BINÁRIO por `--json`.
     #[test]
@@ -445,22 +542,33 @@ mod tests {
             );
         }
         assert!(codigo.iter().any(|l| l.contains("cli::rodar")), "o varredor está cego");
-        // O mesmo vale para o parser: nada de ler o disco do run.
-        let telas = include_str!("telas.rs");
-        let prod = telas.split("#[cfg(test)]").next().expect("há código antes dos testes");
-        assert!(!prod.contains("std::fs"), "o parser é puro: texto entra, struct sai");
+        // O mesmo vale para os parsers: nada de ler o disco do run.
+        for (nome, fonte) in
+            [("telas.rs", include_str!("telas.rs")), ("leituras.rs", include_str!("leituras.rs"))]
+        {
+            let prod = fonte.split("#[cfg(test)]").next().expect("há código antes dos testes");
+            assert!(!prod.contains("std::fs"), "{nome} é puro: texto entra, struct sai");
+        }
+        // E NENHUMA tela nova usa o crate do domínio nem sobe processo por conta própria: elas
+        // falam por `cli::rodar`/`ponte` (a casca) e a abertura do terminal/editor é da plataforma.
+        for (nome, fonte) in fontes_da_janela() {
+            if matches!(nome, "main.rs" | "cli.rs" | "terminal.rs") {
+                continue;
+            }
+            let prod = fonte.split("#[cfg(test)]").next().expect("há código antes dos testes");
+            for l in prod.lines().map(str::trim_start).filter(|l| !l.starts_with("//")) {
+                for proibido in ["overdev_casa", "Command::new", "std::process"] {
+                    assert!(!l.contains(proibido), "{nome} usou `{proibido}`: {l}");
+                }
+            }
+        }
     }
 
     /// **D6: esta janela NUNCA escreve no disco.** Quem grava é o CLI (`reply`, `refuse`) ou o
     /// terminal (`restore`). O varredor olha o código de TODA a janela, não só do `main.rs`.
     #[test]
     fn a_janela_nunca_escreve_no_disco() {
-        let arquivos = [
-            ("main.rs", include_str!("main.rs")),
-            ("cli.rs", include_str!("cli.rs")),
-            ("telas.rs", include_str!("telas.rs")),
-            ("terminal.rs", include_str!("terminal.rs")),
-        ];
+        let arquivos = fontes_da_janela();
         for (nome, fonte) in arquivos {
             let prod = fonte.split("#[cfg(test)]").next().expect("há código antes dos testes");
             for l in prod.lines().map(str::trim_start).filter(|l| !l.starts_with("//")) {
@@ -484,5 +592,18 @@ mod tests {
         let c = producao();
         assert!(c.iter().any(|l| l.contains("no_terminal(&w, e, &[\"restore\"")), "restore sumiu");
         assert!(c.iter().any(|l| l.contains("\"reply\"")), "o reply sumiu");
+        // As ações novas também passam pelo CLI ou pelo terminal — nunca por escrita local.
+        let todos: String = fontes_da_janela()
+            .iter()
+            .flat_map(|(_, f)| f.split("#[cfg(test)]").next())
+            .collect::<Vec<_>>()
+            .join("\n");
+        for sub in ["\"human\"", "\"answer\"", "\"refuse\"", "\"note\"", "\"split\"", "\"stop\""] {
+            assert!(todos.contains(sub), "a ação {sub} sumiu da janela");
+        }
+        assert!(
+            todos.contains("ponte::no_terminal(e, &comandos::executar())"),
+            "Executar não abre o terminal"
+        );
     }
 }

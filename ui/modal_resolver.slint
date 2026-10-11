@@ -1,0 +1,73 @@
+import { TextEdit } from "std-widgets.slint";
+import { Th, Btn } from "tema.slint";
+import { Ov } from "estado.slint";
+
+// RESOLVER um item humano: responder (libera a máquina) ou recusar (cancela).
+//
+// Precisa de modal e não de um clique só porque o conteúdo É o texto: uma resposta vazia liberaria
+// o item de MÁQUINA sem critério registrado, e uma recusa sem motivo não explica depois por que
+// aquilo saiu do projeto. O aviso do meio é deliberado: as duas ações mexem no item de máquina
+// vinculado, e isso não é óbvio a partir do botão — dizer o efeito antes é mais barato que desfazer.
+export component ModalResolver inherits Rectangle {
+    background: #000000.transparentize(0.45);
+    TouchArea { clicked => { Ov.resolver-cancelar(); } }
+    Rectangle {
+        width: Math.min(root.width - 64px, 560px);
+        height: card.preferred-height;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        border-radius: 14px;
+        background: Th.surface;
+        border-width: 1px;
+        border-color: Ov.resolve-responder ? Th.border : Th.warn.transparentize(0.4);
+        TouchArea {}
+        card := VerticalLayout {
+            padding: 22px;
+            spacing: 14px;
+            Text {
+                text: Ov.resolve-responder ? "Responder item humano" : "Recusar item humano";
+                font-size: 16px; font-weight: 800;
+                color: Ov.resolve-responder ? Th.text : Th.warn;
+            }
+            Text { text: Ov.resolve-item; font-size: 13px; font-weight: 600; color: Th.text; wrap: word-wrap; }
+            Text {
+                text: Ov.resolve-responder
+                    ? "A resposta vira o critério do item e LIBERA o item de máquina que ele travava."
+                    : "Recusar CANCELA o item de máquina vinculado — não é o mesmo que fazer. Diga por quê.";
+                font-size: 12px; color: Th.text-dim; wrap: word-wrap;
+            }
+            Rectangle {
+                height: 120px;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: Th.border;
+                background: Th.bg;
+                TextEdit {
+                    width: parent.width - 4px;
+                    height: parent.height - 4px;
+                    x: 2px;
+                    y: 2px;
+                    text <=> Ov.resolve-texto;
+                    wrap: word-wrap;
+                }
+            }
+            if Ov.resolve-status != "": Text {
+                text: Ov.resolve-status;
+                font-size: 12px; font-weight: 600;
+                color: Ov.resolve-erro ? Th.warn : Th.good;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: end;
+                Btn { label: "Cancelar"; clicked => { Ov.resolver-cancelar(); } }
+                Btn {
+                    label: Ov.resolve-responder ? "Responder" : "Recusar";
+                    primary: true;
+                    enabled: Ov.resolve-texto != "";
+                    clicked => { Ov.resolver-confirmar(); }
+                }
+            }
+        }
+    }
+}

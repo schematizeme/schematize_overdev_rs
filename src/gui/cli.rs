@@ -74,10 +74,10 @@ fn home() -> Option<PathBuf> {
 /// **Devolve `Result`, nunca string vazia:** "não consegui executar" e "executei e falhou"
 /// precisam chegar à tela como MOTIVO. Vazio viraria tela em branco — a janela afirmando que não
 /// há nada quando o que houve foi não ter conseguido perguntar.
-pub fn rodar(dir: &Path, args: &[&str]) -> Result<String, String> {
+pub fn rodar<S: AsRef<str>>(dir: &Path, args: &[S]) -> Result<String, String> {
     let b = bin();
     let out = Command::new(&b)
-        .args(args)
+        .args(args.iter().map(AsRef::as_ref))
         .current_dir(dir)
         .stdin(Stdio::null())
         .output()
@@ -86,7 +86,8 @@ pub fn rodar(dir: &Path, args: &[&str]) -> Result<String, String> {
         let err = String::from_utf8_lossy(&out.stderr);
         let err = err.trim();
         return Err(if err.is_empty() {
-            format!("{} {} falhou ({})", b.display(), args.join(" "), out.status)
+            let a: Vec<&str> = args.iter().map(AsRef::as_ref).collect();
+            format!("{} {} falhou ({})", b.display(), a.join(" "), out.status)
         } else {
             err.to_string()
         });
@@ -102,6 +103,14 @@ fn aspa(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
+/// **O quê:** a linha `'<bin>' arg arg…` — o comando que roda, sem o `cd` nem o eco.
+///
+/// **Onde:** [`comando_para_terminal`] e o guardrail de «Executar», que MOSTRA esta linha antes
+/// de abrir o terminal. Uma função só garante que o mostrado é o executado.
+pub fn linha_de_comando(bin: &str, args: &[&str]) -> String {
+    format!("{} {}", aspa(bin), args.join(" "))
+}
+
 /// **O quê:** monta o comando de shell que roda um subcomando NO TERMINAL, dentro do projeto,
 /// com o eco no topo.
 ///
@@ -111,7 +120,7 @@ fn aspa(s: &str) -> String {
 /// mostra o MESMO comando que roda**, e o `read` no fim segura o terminal depois que ele
 /// termina — sem ele o erro some junto com a janela.
 pub fn comando_para_terminal(bin: &str, dir: &Path, args: &[&str]) -> String {
-    let linha = format!("{} {}", aspa(bin), args.join(" "));
+    let linha = linha_de_comando(bin, args);
     let d = aspa(&dir.display().to_string());
     format!(
         "cd {d} || exit 1; echo {}; echo; {linha}; echo; read -n1 -s -r -p '…'",
