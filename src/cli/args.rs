@@ -40,7 +40,21 @@ pub enum Cmd {
     },
     /// Abre um TERMINAL interativo já neste projeto, com o `claude` pronto e o bypass de
     /// permissões ligado. Quando o claude sai, o shell continua aberto na pasta certa.
-    Terminal,
+    ///
+    /// **Com `--prompt`/`--receita`** abre o `claude` JÁ com uma tarefa (o hub delega aqui o que
+    /// lançava sozinho). `--receita` nomeia um prompt que este app monta: `archive-todos`,
+    /// `reindex` ou `overdev` (este com o objetivo do run do diretório e o supervisor de pé).
+    Terminal {
+        /// Prompt livre para o `claude` abrir executando.
+        #[arg(long, conflicts_with = "receita")]
+        prompt: Option<String>,
+        /// Receita nomeada: archive-todos | reindex | overdev.
+        #[arg(long)]
+        receita: Option<String>,
+        /// Machine-readable output: `{"terminal":"<nome>"}`.
+        #[arg(long)]
+        json: bool,
+    },
     /// SUPERVISIONA o run deste diretório: se o agente morrer (contexto/crash/janela fechada)
     /// com item de máquina aberto, RELANÇA. É a rede que o Stop hook não cobre — ele só age
     /// quando o agente TENTA encerrar o turno, não quando o processo simplesmente acaba.
@@ -272,6 +286,12 @@ pub enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// Decisions, plan and parked questions of the run, as text (the hub shows them folded).
+    Documentos {
+        /// Machine-readable output (the hub reads this).
+        #[arg(long)]
+        json: bool,
+    },
     /// The human notes (NOTAS.md) as a document.
     Notas {
         /// Machine-readable output (the window reads this).
@@ -332,6 +352,12 @@ pub enum Auto {
 /// para cá junto com o painel, mesmo o índice sendo conceito do hub.
 #[derive(Subcommand)]
 pub enum GraphCmd {
+    /// The index graph as JSON: global (paged/aggregated) or one service's detail (the hub reads this).
+    Json {
+        /// Drill into one service (`.schematize/grafos/<servico>.md`, else the flat index filtered).
+        #[arg(long)]
+        servico: Option<String>,
+    },
     /// Export the index as an Obsidian vault (markdown + [[wikilinks]]).
     Obsidian {
         /// Output directory (default: <project>_archive/obsidian).

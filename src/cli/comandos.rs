@@ -227,10 +227,9 @@ pub fn executar(sub: Cmd) -> Result<(), String> {
         Cmd::Enable => overdev_casa::settings::enable(&overdev_casa::nucleo::util::self_exe()),
         Cmd::Disable => overdev_casa::settings::disable(),
         Cmd::Start { objetivo, max } => overdev_casa::overdev::start(&objetivo.join(" "), max),
-        Cmd::Terminal => crate::cli::comandos::cwd_project().and_then(|p| {
-            overdev_casa::agentrun::abrir_terminal_no_projeto(&p)
-                .map(|t| println!("terminal `{t}` aberto em {} — o claude sobe com o bypass ligado.", p.display()))
-        }),
+        Cmd::Terminal { prompt, receita, json } => {
+            crate::cli::grafo::terminal(prompt.as_deref(), receita.as_deref(), json)
+        }
         Cmd::Supervise { max } => crate::cli::comandos::cwd_project().map(|projeto| {
             let teto = max.unwrap_or(overdev_casa::overdev::supervisor::MAX_RELANCAMENTOS);
             println!(
@@ -256,6 +255,9 @@ pub fn executar(sub: Cmd) -> Result<(), String> {
         }
         Cmd::Panel => overdev_casa::panel::open(),
         Cmd::Graph { sub } => match sub {
+            crate::cli::args::GraphCmd::Json { servico } => {
+                crate::cli::grafo::grafo_json(servico.as_deref())
+            }
             crate::cli::args::GraphCmd::Obsidian { out } => {
                 overdev_casa::panel::export_obsidian(out)
             }
@@ -312,6 +314,7 @@ pub fn executar(sub: Cmd) -> Result<(), String> {
         Cmd::Tokens { .. } => crate::cli::leituras::tokens(),
         Cmd::Arquivos { .. } => crate::cli::leituras::arquivos(),
         Cmd::Notas { .. } => crate::cli::leituras::notas(),
+        Cmd::Documentos { json } => crate::cli::grafo::documentos(json),
     }
 }
 
