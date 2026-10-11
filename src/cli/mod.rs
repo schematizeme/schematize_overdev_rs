@@ -6,6 +6,7 @@ pub mod args;
 pub mod caixa;
 pub mod comandos;
 pub mod desktop;
+pub mod leituras;
 pub mod perguntas;
 pub mod prompt;
 pub mod saidajson;

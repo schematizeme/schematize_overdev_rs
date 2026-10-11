@@ -308,6 +308,10 @@ pub fn executar(sub: Cmd) -> Result<(), String> {
             overdev_log();
             Ok(())
         }
+        Cmd::Monitor { .. } => crate::cli::leituras::monitor(),
+        Cmd::Tokens { .. } => crate::cli::leituras::tokens(),
+        Cmd::Arquivos { .. } => crate::cli::leituras::arquivos(),
+        Cmd::Notas { .. } => crate::cli::leituras::notas(),
     }
 }
 

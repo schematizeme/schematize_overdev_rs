@@ -26,7 +26,8 @@ pub fn caixa_add(texto: &str) -> Result<(), String> {
 pub fn caixa_cmd(sub: CaixaCmd) -> Result<(), String> {
     let root = raiz()?;
     match sub {
-        CaixaCmd::List => {
+        CaixaCmd::List { json: true } => crate::cli::leituras::caixa_list(),
+        CaixaCmd::List { json: false } => {
             let p = caixa::pendentes(&root);
             let q = caixa::processadas(&root);
             if p.is_empty() && q.is_empty() {

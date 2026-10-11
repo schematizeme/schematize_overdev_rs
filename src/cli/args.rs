@@ -254,12 +254,40 @@ pub enum Cmd {
     },
     /// Print the completion log (HH:MM:SS local + item) from .schematize/overdev/completions.json.
     Log,
+    /// The run monitor: open machine items and the recent completions (cheap; the window polls it).
+    Monitor {
+        /// Machine-readable output (the window reads this).
+        #[arg(long)]
+        json: bool,
+    },
+    /// Tokens and model of the project, from the Claude transcripts (HEAVY: do not poll it).
+    Tokens {
+        /// Machine-readable output (the window reads this).
+        #[arg(long)]
+        json: bool,
+    },
+    /// Where PLAN.md, CHECKLIST.md and NOTAS.md of this run live (the window opens them in the editor).
+    Arquivos {
+        /// Machine-readable output (the window reads this).
+        #[arg(long)]
+        json: bool,
+    },
+    /// The human notes (NOTAS.md) as a document.
+    Notas {
+        /// Machine-readable output (the window reads this).
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
 pub enum CaixaCmd {
     /// Show what is captured and not yet in the checklist.
-    List,
+    List {
+        /// Machine-readable output (the window reads this).
+        #[arg(long)]
+        json: bool,
+    },
     /// Record the items an agent extracted from a demand (moves it to `processado`).
     Organizar {
         /// Demand id (see `caixa list`).
