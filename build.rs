@@ -57,16 +57,13 @@ fn main() {
 
     // O veredito "sujo" depende do CONTEÚDO da árvore, que não passa por `.git/HEAD`: editar um
     // arquivo rastreado não mexe em HEAD nem em refs. Por isso vigiamos o que vira binário —
-    // `src`, `ui`, `Cargo.*`, este `build.rs` (diretório = mtime recursivo) — e `.git/index`
+    // `src`, `Cargo.*`, este `build.rs` (diretório = mtime recursivo) — e `.git/index`
     // (`git add`/`reset`/`stash`). NÃO vigiamos a árvore inteira (`.`): `target/` muda a cada
     // build e o script rodaria sempre. Caminho inexistente em `rerun-if-changed` conta como
     // "mudou" e re-roda TODO build, então só se emite o que existe.
-    for caminho in ["src", "ui", "Cargo.toml", "Cargo.lock", "build.rs", ".git/index"] {
+    for caminho in ["src", "Cargo.toml", "Cargo.lock", "build.rs", ".git/index"] {
         if std::path::Path::new(caminho).exists() {
             println!("cargo:rerun-if-changed={caminho}");
         }
     }
-
-    slint_build::compile("ui/overdev.slint").expect("compilar ui/overdev.slint");
-    println!("cargo:rerun-if-changed=ui");
 }

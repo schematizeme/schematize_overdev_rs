@@ -3,7 +3,7 @@
 //! **O quê:** `fila --json`, `progresso --json`, `checklist --json` e `history --json` viram
 //! structs; mais o fatiamento (filtro + página) do checklist.
 //!
-//! **Onde:** [`super`] (`main.rs`), que só copia estas structs para o Slint.
+//! **Onde:** [`super::estado`] e as telas, que só desenham o que sai daqui.
 //!
 //! ## Parser PURO, e a razão tem nome
 //!
@@ -327,11 +327,11 @@ pub fn quando(epoch: i64) -> String {
     hora_local(epoch)
 }
 
-/// Itens por página — o repeater do Slint não é virtualizado, então a lista é FATIADA para o
+/// Itens por página — a árvore de widgets do iced não é virtualizada, então a lista é FATIADA para o
 /// número de elementos não crescer com o projeto (piso "software de massa").
 pub const POR_PAGINA: usize = 100;
 
-/// Filtros do checklist. O `i32` é o que cruza a fronteira para o Slint.
+/// Filtros do checklist. O `i32` é o que a mensagem `Filtro` carrega.
 /// 0 = todos · 1 = abertos (máquina) · 2 = feitos · 3 = on-hold · 4 = humanos abertos.
 pub fn casa(tipo: &str, filtro: i32) -> bool {
     match filtro {
@@ -354,8 +354,8 @@ pub fn paginas(total: usize) -> usize {
 /// **O quê:** a FATIA da página `pagina` (0-based, presa ao intervalo válido) sob `filtro`, e o
 /// total filtrado.
 ///
-/// **Onde:** a aba Checklist, a cada mudança de filtro/página. Clona só o que vai à tela.
-pub fn fatia(todos: &[Item], filtro: i32, pagina: usize) -> (Vec<Item>, usize) {
+/// **Onde:** a aba Checklist, a cada desenho. Empresta só o que vai à tela (sem clonar).
+pub fn fatia(todos: &[Item], filtro: i32, pagina: usize) -> (Vec<&Item>, usize) {
     let total = todos.iter().filter(|i| casa(&i.tipo, filtro)).count();
     let p = pagina.min(paginas(total) - 1);
     let v = todos
@@ -363,7 +363,6 @@ pub fn fatia(todos: &[Item], filtro: i32, pagina: usize) -> (Vec<Item>, usize) {
         .filter(|i| casa(&i.tipo, filtro))
         .skip(p * POR_PAGINA)
         .take(POR_PAGINA)
-        .cloned()
         .collect();
     (v, total)
 }

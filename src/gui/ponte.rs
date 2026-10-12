@@ -9,7 +9,8 @@
 //! **A mensagem do CLI é o produto:** ela diz POR QUE a ação foi recusada, e a janela só a
 //! repassa (primeira linha). Devolve `(mensagem, erro)` e deixa cada tela escolher ONDE mostrar.
 
-use super::{cli, terminal, Estado};
+use super::{cli, terminal};
+use std::path::Path;
 
 /// **O quê:** a primeira linha não vazia de `t`. **Onde:** [`rodar`] — a mensagem inteira de um
 /// erro do clap tem dicas e `Usage:` que não cabem num banner.
@@ -21,8 +22,8 @@ pub fn primeira_linha(t: &str) -> String {
 ///
 /// **Onde:** as ações RÁPIDAS (fechar item, responder, recusar, capturar, fundir, anotar, parar).
 /// Quem GRAVA e VALIDA é o CLI; a janela nunca escreve no disco.
-pub fn rodar(e: &Estado, args: &[String]) -> (String, bool) {
-    match cli::rodar(&e.dir, args) {
+pub fn rodar(dir: &Path, args: &[String]) -> (String, bool) {
+    match cli::rodar(dir, args) {
         Ok(msg) => (primeira_linha(&msg), false),
         Err(err) => (primeira_linha(&err), true),
     }
@@ -33,9 +34,9 @@ pub fn rodar(e: &Estado, args: &[String]) -> (String, bool) {
 /// **Onde:** o que spawna o `claude` (Executar, Dividir + lançar) ou reorganiza arquivos
 /// (Dividir). **Sem terminal, a mensagem traz o COMANDO** — quem não tem emulador ainda consegue
 /// fazer a coisa colando (§37.48).
-pub fn no_terminal(e: &Estado, args: &[&str]) -> (String, bool) {
+pub fn no_terminal(dir: &Path, args: &[&str]) -> (String, bool) {
     let bin = cli::bin().display().to_string();
-    let cmd = cli::comando_para_terminal(&bin, &e.dir, args);
+    let cmd = cli::comando_para_terminal(&bin, dir, args);
     if terminal::abrir(&cmd) {
         ("terminal aberto — o comando aparece lá antes de rodar.".to_string(), false)
     } else {

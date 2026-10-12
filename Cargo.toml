@@ -34,14 +34,17 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 # PTY de verdade para o agente: o `claude` detecta terminal e muda de comportamento sem um.
 # É o que permite ao supervisor VER o progresso em vez de esperar o processo terminar.
 portable-pty = "0.9.0"
-# Toolkit da JANELA. Mesmo backend das irmãs: winit cobre Wayland E X11, renderer femtovg, sem
-# skia (que exigiria cmake). Só o binário `-gui` o usa.
-slint = { version = "1.17", default-features = false, features = [
-    "std",
-    "compat-1-2",
-    "backend-winit",
-    "renderer-femtovg",
-    "accessibility",
+# Toolkit da JANELA — iced no menor perfil que mede ~19 MB de RSS (spike em
+# `.schematize/scratch/ui-spike/iced-tiny`). Pino EXATO (`=`): a API do iced quebra entre menores.
+#   - `tiny-skia`: renderer em CPU. SEM `wgpu` — é o que traria ~100 MB de RSS e centenas de crates
+#     (GPU stack: wgpu, naga, ash...). Sem `crisp`/`web-colors`/`linux-theme-detection` (defaults).
+#   - `thread-pool`: o executor das `Task` (`futures::executor::ThreadPool`); é o menor. Sem tokio.
+#   - `x11` + `wayland`: os dois backends de janela do winit (a máquina do usuário tem os dois).
+iced = { version = "=0.14.0", default-features = false, features = [
+    "tiny-skia",
+    "thread-pool",
+    "x11",
+    "wayland",
 ] }
 
 # Hora LOCAL do card da pergunta ("24/09 20:59"): o offset do fuso não sai do `std`. MIT/Apache-2.0,
@@ -63,7 +66,3 @@ serde_json = "1"
 strip = true
 opt-level = 3
 lto = "thin"
-
-[build-dependencies]
-# Compila o `.slint` da janela. Só o build precisa dele.
-slint-build = "1.17"

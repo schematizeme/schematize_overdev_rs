@@ -8,77 +8,140 @@
 //! aqui a janela NÃO escreve arquivo (D6, e há teste que lê o fonte para cobrar): o arquivo
 //! abre no editor da pessoa, e a nota entra pelo CLI.
 
-use super::{cli, comandos, leituras, ponte, terminal, ArquivoUI, Estado, MainWindow, Ov};
-use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
-use std::rc::Rc;
+use super::estado::{App, Aviso};
+use super::leituras::Arquivo;
+use super::msg::{Msg, Origem};
+use super::tema;
+use super::widgets::{btn, cartao, negrito, rolagem, status, txt};
+use super::{carga::Escopo, comandos, tarefa};
+use iced::widget::{column, row, text_input};
+use iced::{Alignment, Element, Fill};
 
-/// **O quê:** relê os documentos e as notas e escreve a aba.
-///
-/// **Onde:** a abertura, o «Reler» e depois de anexar uma nota. Cada falha vai para o banner da
-/// aba — uma lista de arquivos que não carregou NÃO é «nenhum arquivo».
-pub fn atualizar(w: &MainWindow, e: &Estado) {
-    let o = w.global::<Ov>();
-    match cli::rodar(&e.dir, &["arquivos", "--json"]).and_then(|t| leituras::ler_arquivos(&t)) {
-        Ok(a) => o.set_arquivos(ModelRc::new(VecModel::from(
-            a.into_iter()
-                .map(|x| ArquivoUI {
-                    nome: x.nome.into(),
-                    caminho: x.caminho.into(),
-                    existe: x.existe,
-                })
-                .collect::<Vec<_>>(),
-        ))),
-        Err(err) => {
-            o.set_arquivos(ModelRc::new(VecModel::from(Vec::<ArquivoUI>::new())));
-            o.set_notas_status(err.lines().next().unwrap_or("").to_string().into());
-            o.set_notas_erro(true);
-        }
-    }
-    match cli::rodar(&e.dir, &["notas", "--json"]).and_then(|t| leituras::ler_notas(&t)) {
-        Ok(t) => o.set_notas_texto(t.trim().to_string().into()),
-        Err(err) => {
-            o.set_notas_texto(SharedString::new());
-            o.set_notas_status(err.lines().next().unwrap_or("").to_string().into());
-            o.set_notas_erro(true);
-        }
-    }
+/// O estado da aba Notas.
+#[derive(Default)]
+pub struct EstadoNotas {
+    pub arquivos: Vec<Arquivo>,
+    /// As notas já anexadas, como o CLI as imprime.
+    pub texto: String,
+    /// O campo «ponto por task».
+    pub task: String,
+    /// O campo «prompt de correção».
+    pub correcao: String,
+    pub status: Aviso,
 }
 
-/// **O quê:** registra os callbacks da aba. **Onde:** [`super::main`], uma vez.
-pub fn ligar(w: &MainWindow, e: &Rc<Estado>) {
-    com_ov!(w, e, on_abrir_arquivo, |w, e, caminho| {
-        let _ = e;
-        let o = w.global::<Ov>();
-        match terminal::abrir_arquivo(caminho.as_str()) {
-            Ok(m) => {
-                o.set_notas_status(m.into());
-                o.set_notas_erro(false);
+impl App {
+    /// **O quê:** trata as mensagens da aba Notas. **Onde:** [`App::update`].
+    pub fn atualizar_notas(&mut self, m: Msg) -> iced::Task<Msg> {
+        match m {
+            Msg::AbrirArquivo(caminho) => tarefa::abrir_arquivo(caminho),
+            Msg::NotaTask(t) => {
+                self.notas.task = t;
+                iced::Task::none()
             }
-            Err(m) => {
-                o.set_notas_status(m.into());
-                o.set_notas_erro(true);
+            Msg::NotaCorrecao(t) => {
+                self.notas.correcao = t;
+                iced::Task::none()
             }
-        }
-    });
-    com_ov!(w, e, on_nota_adicionar, |w, e, correcao| {
-        let o = w.global::<Ov>();
-        let texto = if correcao { o.get_nota_correcao() } else { o.get_nota_task() };
-        if texto.trim().is_empty() {
-            o.set_notas_status("escreva a nota antes de anexar.".into());
-            o.set_notas_erro(true);
-        } else {
-            let (msg, erro) = ponte::rodar(e, &comandos::nota(correcao, texto.as_str()));
-            if !erro {
-                // Só limpa o campo se a nota entrou: falhou, o texto digitado fica.
-                if correcao {
-                    o.set_nota_correcao(SharedString::new());
-                } else {
-                    o.set_nota_task(SharedString::new());
+            Msg::NotaAdicionar(correcao) => {
+                let texto = if correcao { &self.notas.correcao } else { &self.notas.task };
+                if texto.trim().is_empty() {
+                    self.notas.status = Aviso::falha("escreva a nota antes de anexar.");
+                    return iced::Task::none();
                 }
+                let args = comandos::nota(correcao, texto);
+                tarefa::cli(self.dir.clone(), args, Origem::Nota(correcao))
             }
-            o.set_notas_status(msg.into());
-            o.set_notas_erro(erro);
-            atualizar(&w, e);
+            _ => iced::Task::none(),
         }
-    });
+    }
+
+    /// **O quê:** o resultado de «Anexar» ou «Abrir no editor». **Onde:** `Resp(Nota|Arquivo, …)`.
+    ///
+    /// Só limpa o campo se a nota entrou: falhou, o texto digitado fica.
+    pub fn resposta_das_notas(&mut self, o: Origem, msg: String, erro: bool) -> iced::Task<Msg> {
+        self.notas.status = Aviso::de(msg, erro);
+        match o {
+            Origem::Nota(correcao) if !erro => {
+                if correcao {
+                    self.notas.correcao.clear();
+                } else {
+                    self.notas.task.clear();
+                }
+                self.recarregar(Escopo::DE_NOTAS)
+            }
+            Origem::Nota(_) => self.recarregar(Escopo::DE_NOTAS),
+            _ => iced::Task::none(),
+        }
+    }
+
+    /// **O quê:** a aba Notas. **Onde:** [`super::view`].
+    pub fn ver_notas(&self) -> Element<'_, Msg> {
+        let c = self.cores;
+        let x = &self.notas;
+        let mut col = column![negrito("Arquivos do run", 13.0, c.texto)].spacing(10).width(Fill);
+        for a in &x.arquivos {
+            let onde = if a.existe { a.caminho.as_str() } else { "ainda não existe" };
+            let linha = row![
+                negrito(&a.nome, 12.5, c.texto).width(110),
+                txt(onde, 11.0, c.dim).width(Fill),
+                btn(
+                    c,
+                    "Abrir no editor",
+                    a.existe.then(|| Msg::AbrirArquivo(a.caminho.clone())),
+                    false,
+                    true
+                ),
+            ]
+            .spacing(12)
+            .align_y(Alignment::Center);
+            col = col.push(cartao(c, c.borda, 8.0, linha));
+        }
+        col = col
+            .push(negrito("Ponto por task", 13.0, c.texto))
+            .push(self.campo_de_nota("um ponto que o agente deve tratar numa task", &x.task, false))
+            .push(negrito("Prompt de correção", 13.0, c.texto))
+            .push(self.campo_de_nota(
+                "o que o agente fez errado e como corrigir",
+                &x.correcao,
+                true,
+            ))
+            .push(status(c, &x.status.texto, x.status.erro, 12.0))
+            .push(negrito("Notas já anexadas", 13.0, c.texto));
+        if x.texto.is_empty() {
+            col = col.push(txt("nenhuma nota ainda.", 12.0, c.dim));
+        } else {
+            col = col.push(txt(&x.texto, 12.0, c.texto).width(Fill));
+        }
+        rolagem(col)
+    }
+
+    /// **O quê:** a linha «campo + Anexar» de uma nota. **Onde:** [`App::ver_notas`].
+    fn campo_de_nota<'a>(
+        &'a self,
+        dica: &'a str,
+        valor: &'a str,
+        correcao: bool,
+    ) -> Element<'a, Msg> {
+        let c = self.cores;
+        let mudou = move |t: String| if correcao { Msg::NotaCorrecao(t) } else { Msg::NotaTask(t) };
+        let campo = text_input(dica, valor)
+            .on_input(mudou)
+            .on_submit(Msg::NotaAdicionar(correcao))
+            .size(13)
+            .padding(7)
+            .style(tema::campo(c));
+        row![
+            campo,
+            btn(
+                c,
+                "Anexar",
+                (!valor.trim().is_empty()).then_some(Msg::NotaAdicionar(correcao)),
+                false,
+                true
+            )
+        ]
+        .spacing(6)
+        .into()
+    }
 }
