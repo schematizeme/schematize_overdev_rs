@@ -21,21 +21,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Slint com backend winit + renderer femtovg precisa do X11/Wayland/fontconfig de
-      # DESENVOLVIMENTO para LINKAR, mesmo sem abrir janela nenhuma no CI.
+      # A janela (iced + tiny-skia, ADR-0020) NÃO pede libs de sistema para compilar nem para
+      # linkar: x11, wayland e xkbcommon entram por `dlopen` em tempo de execução (features
+      # `*-dlopen` do winit/softbuffer/wayland-backend), e o renderer é CPU puro. Por isso não há
+      # mais o passo `apt-get install lib*-dev` que o Slint exigia — apague este comentário se
+      # um dia o `Cargo.lock` voltar a puxar uma crate `-sys` que linke contra libs do sistema.
       #
-      # **Entrou junto com o segundo binário (ADR-0020), e não depois.** No dia em que a janela
-      # passou a morar neste repo, `cargo build` deixou de ser só o CLI: sem estas libs, o link
-      # do `schematize-overdev-gui` falha e leva junto um CI que nada tem a ver com janela.
-      - name: deps de sistema (Slint)
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y \
-            pkg-config \
-            libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
-            libxkbcommon-dev libwayland-dev libgl1-mesa-dev \
-            libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
-            libfontconfig1-dev
+      # O CI não abre janela nenhuma; o teste de integração sobe o binário SEM display.
 
       - uses: dtolnay/rust-toolchain@stable
         with:
