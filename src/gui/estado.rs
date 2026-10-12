@@ -15,11 +15,14 @@
 use super::caixa::EstadoCaixa;
 use super::carga::{Carga, Escopo};
 use super::execucao::EstadoExec;
+use super::home::Home;
 use super::msg::Aba;
 use super::notas::EstadoNotas;
 use super::projeto::Seletor;
 use super::resolver::Resolver;
+use super::sino::Sino;
 use super::tema::Cores;
+use super::topo::Topo;
 use super::{leituras, telas};
 use iced::Theme;
 use std::collections::HashMap;
@@ -106,6 +109,9 @@ pub struct App {
     pub caixa: EstadoCaixa,
     pub notas: EstadoNotas,
     pub seletor: Seletor,
+    pub home: Home,
+    pub sino: Sino,
+    pub topo: Topo,
 }
 
 impl App {
@@ -146,6 +152,9 @@ impl App {
             caixa: EstadoCaixa::default(),
             notas: EstadoNotas::default(),
             seletor: Seletor::default(),
+            home: Home::default(),
+            sino: Sino::default(),
+            topo: Topo::default(),
         }
     }
 
@@ -159,6 +168,12 @@ impl App {
         // Os relógios do «Acompanhar» do projeto ANTIGO ainda podem chegar: o ciclo segue
         // crescendo para que nenhum deles case com um acompanhamento futuro.
         novo.exec.ciclo = self.exec.ciclo + 1;
+        // O que NÃO é do projeto fica: a lista do seletor, o sino e a versão do hub.
+        novo.seletor = self.seletor.fechado();
+        let atual = novo.dir.clone();
+        novo.seletor.refazer(&atual);
+        novo.sino = std::mem::take(&mut self.sino);
+        novo.topo.versao_hub = std::mem::take(&mut self.topo.versao_hub);
         *self = novo;
     }
 
@@ -234,6 +249,9 @@ impl App {
         }
         if let Some(r) = &c.notas {
             self.aplicar_notas(r);
+        }
+        if let Some(h) = &c.home {
+            self.aplicar_home(h);
         }
     }
 

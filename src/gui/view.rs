@@ -13,7 +13,7 @@ use super::msg::{Aba, Msg};
 use super::tema;
 use super::widgets::{btn, negrito, separador, txt};
 use iced::widget::{column, container, progress_bar, row, stack, Space};
-use iced::{Alignment, Element, Fill, Length};
+use iced::{Element, Fill, Length};
 
 impl App {
     /// **O quê:** o título da janela. **Onde:** o `iced::application`.
@@ -28,7 +28,12 @@ impl App {
     /// definida em vez de ficar ao acaso).
     pub fn view(&self) -> Element<'_, Msg> {
         let base = self.tela();
-        match self.ver_seletor().or_else(|| self.ver_resolver()) {
+        let modal = self
+            .ver_sino()
+            .or_else(|| self.ver_gerenciar())
+            .or_else(|| self.ver_seletor())
+            .or_else(|| self.ver_resolver());
+        match modal {
             Some(modal) => stack![base, modal].into(),
             None => base,
         }
@@ -51,6 +56,7 @@ impl App {
         }
         col = col.push(self.progresso());
         let corpo = match self.aba {
+            Aba::Projeto => self.ver_home(),
             Aba::Perguntas => self.ver_perguntas(),
             Aba::Checklist => self.ver_checklist(),
             Aba::Historico => self.ver_historico(),
@@ -61,23 +67,7 @@ impl App {
         container(col.push(corpo)).padding(18).width(Fill).height(Fill).into()
     }
 
-    /// **O quê:** título, versão, caminho do projeto e os botões do topo. **Onde:** [`App::tela`].
-    fn cabecalho(&self) -> Element<'_, Msg> {
-        let c = self.cores;
-        let glifo = if c.escuro { "☾" } else { "☀" };
-        let topo = row![
-            column![negrito("Overdev", 20.0, c.titulo), txt(&self.versao, 11.5, c.dim),],
-            Space::new().width(Fill),
-            btn(c, "Trocar projeto", Some(Msg::AbrirSeletor), false, false),
-            btn(c, "Reler", Some(Msg::Reler), false, false),
-            btn(c, glifo, Some(Msg::AlternarTema), false, false),
-        ]
-        .spacing(10)
-        .align_y(Alignment::Start);
-        column![topo, txt(self.dir.display().to_string(), 11.5, c.dim)].spacing(8).into()
-    }
-
-    /// **O quê:** as seis abas em pílulas; a ativa em laranja. **Onde:** [`App::tela`].
+    /// **O quê:** as sete abas em pílulas; a ativa em laranja. **Onde:** [`App::tela`].
     fn abas(&self) -> Element<'_, Msg> {
         let c = self.cores;
         let contagem = |base: &str, n: usize| {
@@ -88,12 +78,13 @@ impl App {
             }
         };
         let itens = [
+            (Aba::Projeto, "Projeto".to_string()),
             (Aba::Perguntas, contagem("Perguntas", self.quiz_abertas())),
             (Aba::Checklist, "Checklist".to_string()),
-            (Aba::Historico, "Histórico".to_string()),
-            (Aba::Execucao, "Execução".to_string()),
-            (Aba::Caixa, contagem("Caixa", self.caixa.pendentes.len())),
-            (Aba::Notas, "Notas".to_string()),
+            (Aba::Execucao, "Executar overdev".to_string()),
+            (Aba::Caixa, contagem("Acrescentar ao projeto", self.caixa.pendentes.len())),
+            (Aba::Notas, "Notas e correções".to_string()),
+            (Aba::Historico, "Histórico (cópia de segurança)".to_string()),
         ];
         let mut linha = row![].spacing(6);
         for (aba, rotulo) in itens {

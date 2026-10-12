@@ -150,7 +150,11 @@ impl App {
             10.0,
             if i.maquina { c.dim } else { c.accent },
         );
-        let mut linha = row![recuo, negrito(g, 13.0, cor_g), tag, texto].spacing(8);
+        // Centro vertical: o texto de 13 px, a etiqueta de 10 px e os botões (mais altos) ficam na
+        // mesma linha de olhar — sem isto os botões desciam alguns pixels sobre o texto.
+        let mut linha = row![recuo, negrito(g, 13.0, cor_g), tag, texto]
+            .spacing(8)
+            .align_y(iced::Alignment::Center);
         if i.tipo == "hopen" {
             let n = i.humano_n;
             linha = linha.push(

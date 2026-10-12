@@ -233,6 +233,18 @@ pub fn campo(c: Cores) -> impl Fn(&Theme, text_input::Status) -> text_input::Sty
     }
 }
 
+/// **O quê:** o estilo do menu aberto do seletor de projeto (`combo_box`). **Onde:** o cabeçalho.
+pub fn menu_lista(c: Cores) -> impl Fn(&Theme) -> iced::overlay::menu::Style {
+    move |_| iced::overlay::menu::Style {
+        background: Background::Color(c.surface),
+        border: Border { color: c.borda, width: 1.0, radius: border::radius(10) },
+        text_color: c.texto,
+        selected_text_color: c.texto,
+        selected_background: Background::Color(c.accent_soft),
+        shadow: iced::Shadow::default(),
+    }
+}
+
 /// **O quê:** o estilo do editor de várias linhas. **Onde:** a caixa de captura e o modal.
 pub fn editor(c: Cores) -> impl Fn(&Theme, text_editor::Status) -> text_editor::Style {
     move |_, status| text_editor::Style {

@@ -35,7 +35,9 @@ mod cli;
 mod comandos;
 mod estado;
 mod execucao;
+mod externos;
 mod historico;
+mod home;
 mod leituras;
 mod msg;
 mod notas;
@@ -43,10 +45,12 @@ mod perguntas;
 mod ponte;
 mod projeto;
 mod resolver;
+mod sino;
 mod tarefa;
 mod telas;
 mod tema;
 mod terminal;
+mod topo;
 mod update;
 mod view;
 mod widgets;
@@ -54,6 +58,7 @@ mod widgets;
 use estado::App;
 use iced::{window, Size, Task};
 use msg::{Aba, Msg};
+
 use std::path::PathBuf;
 
 /// **O quê:** o projeto pedido em `--dir <caminho>`; `None` se não veio.
@@ -78,6 +83,7 @@ fn dir_dos_args(args: &[String]) -> Option<PathBuf> {
 fn aba_dos_args(args: &[String]) -> Aba {
     let Some(i) = args.iter().position(|a| a == "--aba") else { return Aba::Perguntas };
     match args.get(i + 1).map(String::as_str) {
+        Some("projeto") => Aba::Projeto,
         Some("checklist") => Aba::Checklist,
         Some("historico") | Some("history") => Aba::Historico,
         Some("execucao") => Aba::Execucao,
@@ -98,7 +104,13 @@ fn iniciar(args: &[String]) -> (App, Task<Msg>) {
     let versao =
         format!("schematize-overdev-gui {}", overdev_casa::nucleo::procedencia::rotulo_versao());
     let app = App::novo(dir, dados, versao, aba_dos_args(args), true);
-    let primeira = app.recarregar(carga::Escopo::TUDO);
+    let primeira = Task::batch([
+        app.recarregar(carga::Escopo::TUDO),
+        tarefa::projetos(app.dir.clone()),
+        tarefa::sino(app.dir.clone(), false, false),
+        tarefa::espera_sino(),
+        tarefa::versao_do_hub(app.dir.clone()),
+    ]);
     (app, primeira)
 }
 
@@ -176,7 +188,9 @@ mod tests {
             ("comandos.rs", include_str!("comandos.rs")),
             ("estado.rs", include_str!("estado.rs")),
             ("execucao.rs", include_str!("execucao.rs")),
+            ("externos.rs", include_str!("externos.rs")),
             ("historico.rs", include_str!("historico.rs")),
+            ("home.rs", include_str!("home.rs")),
             ("leituras.rs", include_str!("leituras.rs")),
             ("msg.rs", include_str!("msg.rs")),
             ("notas.rs", include_str!("notas.rs")),
@@ -184,10 +198,12 @@ mod tests {
             ("ponte.rs", include_str!("ponte.rs")),
             ("projeto.rs", include_str!("projeto.rs")),
             ("resolver.rs", include_str!("resolver.rs")),
+            ("sino.rs", include_str!("sino.rs")),
             ("tarefa.rs", include_str!("tarefa.rs")),
             ("telas.rs", include_str!("telas.rs")),
             ("tema.rs", include_str!("tema.rs")),
             ("terminal.rs", include_str!("terminal.rs")),
+            ("topo.rs", include_str!("topo.rs")),
             ("update.rs", include_str!("update.rs")),
             ("view.rs", include_str!("view.rs")),
             ("widgets.rs", include_str!("widgets.rs")),
@@ -282,7 +298,7 @@ mod tests {
         // `cli::rodar`/`ponte` (a casca) e a abertura do terminal/editor é da plataforma. Exceções:
         // `projeto.rs` (plataforma: lista e memória do projeto) e `main.rs`/`cli.rs`/`terminal.rs`.
         for (nome, fonte) in fontes_da_janela() {
-            if matches!(nome, "main.rs" | "cli.rs" | "terminal.rs" | "projeto.rs") {
+            if matches!(nome, "main.rs" | "cli.rs" | "terminal.rs" | "projeto.rs" | "externos.rs") {
                 continue;
             }
             for l in producao_de(fonte) {

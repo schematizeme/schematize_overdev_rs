@@ -19,6 +19,7 @@
 //! O escopo diz o que ler. Cada documento é lido e PARSEADO isoladamente: a falha de um não apaga
 //! os outros (cada erro vai para o lugar dele).
 
+use super::home::{self, DadosHome};
 use super::{cli, leituras, telas};
 use std::path::{Path, PathBuf};
 
@@ -37,7 +38,8 @@ impl Escopo {
     pub const ARQUIVOS: Escopo = Escopo(1 << 7);
     pub const NOTAS: Escopo = Escopo(1 << 8);
     /// Tudo: a abertura, o «Reler» e a troca de projeto.
-    pub const TUDO: Escopo = Escopo(0x1ff);
+    pub const HOME: Escopo = Escopo(1 << 9);
+    pub const TUDO: Escopo = Escopo(0x3ff);
     /// O ciclo do «Acompanhar»: o que é barato.
     pub const TICK: Escopo = Escopo(1 | (1 << 5));
     /// Depois de anexar uma nota ou capturar: só a aba Notas / só a Caixa.
@@ -66,6 +68,8 @@ pub struct Carga {
     pub caixa: Leitura<leituras::Caixa>,
     pub arquivos: Leitura<Vec<leituras::Arquivo>>,
     pub notas: Leitura<String>,
+    /// A aba Projeto: o que `schematize-skills` e `schematize-git` disseram.
+    pub home: Option<DadosHome>,
 }
 
 impl Carga {
@@ -84,6 +88,7 @@ impl Carga {
             caixa: None,
             arquivos: None,
             notas: None,
+            home: None,
         }
     }
 }
@@ -144,6 +149,11 @@ pub fn carregar(dir: &Path, escopo: Escopo, k: i64) -> Carga {
         });
         let notas = s.spawn(|| {
             se(escopo, Escopo::NOTAS, || ler(dir, &["notas", "--json"], leituras::ler_notas))
+        });
+        let home = s.spawn(|| escopo.tem(Escopo::HOME).then(|| home::ler_dados(dir)));
+        c.home = home.join().unwrap_or_else(|_| {
+            let e = || "a leitura falhou por dentro (pânico na thread de leitura)".to_string();
+            Some(DadosHome { acoes: Err(e()), aplicadas: Err(e()), commits: Err(e()) })
         });
         c.progresso = juntar(progresso);
         c.checklist = juntar(checklist);

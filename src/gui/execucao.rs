@@ -278,7 +278,7 @@ impl App {
         if !pode {
             col = col.push(
                 txt(
-                    "Sem run neste diretório. Inicie com `schematize-overdev start \"<objetivo>\"`.",
+                    "Sem run neste diretório. Inicie na aba Projeto («Iniciar overdev»).",
                     12.0,
                     c.dim,
                 )

@@ -79,6 +79,116 @@ pub fn abrir_arquivo(caminho: String) -> Task<Msg> {
     })
 }
 
+/// O que a PLATAFORMA faz por fora do CLI do overdev: abrir pasta, editor, janela nova, link.
+#[derive(Debug, Clone)]
+pub enum Plataforma {
+    Pasta(PathBuf),
+    Codigo(PathBuf),
+    NovaJanela(PathBuf),
+    Url(String),
+}
+
+/// **O quê:** executa uma ação de [`Plataforma`] fora da thread da tela. **Onde:** os ícones do topo
+/// e a ação de notícia do sino; o resultado volta como `Msg::Resp(origem, …)`.
+pub fn plataforma(p: Plataforma, origem: Origem) -> Task<Msg> {
+    Task::perform(
+        async move {
+            match p {
+                Plataforma::Pasta(d) => super::terminal::abrir_pasta(&d),
+                Plataforma::Codigo(d) => super::terminal::abrir_vscode(&d),
+                Plataforma::NovaJanela(d) => super::terminal::nova_janela(&d),
+                Plataforma::Url(u) => super::terminal::abrir_url(&u),
+            }
+        },
+        move |r| match r {
+            Ok(m) => Msg::Resp(origem, m, false),
+            Err(m) => Msg::Resp(origem, m, true),
+        },
+    )
+}
+
+/// **O quê:** `schematize-overdev terminal --json …` e traduz o `{"terminal": "<nome>"}` numa frase.
+/// **Onde:** as ações da aba Projeto que abrem o `claude` num terminal.
+pub fn terminal_json(dir: PathBuf, args: Vec<String>, rotulo: String, origem: Origem) -> Task<Msg> {
+    Task::perform(
+        async move {
+            match super::cli::rodar(&dir, &args).and_then(|t| super::externos::ler_terminal(&t)) {
+                Ok(t) => (format!("{rotulo}: terminal `{t}` aberto em {}", dir.display()), false),
+                Err(e) => (ponte::primeira_linha(&e), true),
+            }
+        },
+        move |(m, e)| Msg::Resp(origem, m, e),
+    )
+}
+
+/// **O quê:** um terminal que roda `bin args…` (o comando aparece antes de rodar). **Onde:** o
+/// «Atualizar» do sino.
+pub fn terminal_de(bin: String, dir: PathBuf, args: Vec<String>, origem: Origem) -> Task<Msg> {
+    Task::perform(
+        async move {
+            let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            ponte::no_terminal_de(&bin, &dir, &refs)
+        },
+        move |(m, e)| Msg::Resp(origem, m, e),
+    )
+}
+
+/// **O quê:** roda um subcomando do `schematize` (o hub, não o overdev) e devolve a primeira linha.
+/// **Onde:** concluir notificação e fixar/desafixar projeto.
+pub fn schematize(dir: PathBuf, args: Vec<String>, origem: Origem) -> Task<Msg> {
+    Task::perform(
+        async move {
+            let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            match super::externos::rodar("schematize", &dir, &refs) {
+                Ok(t) => (ponte::primeira_linha(&t), false),
+                Err(e) => (ponte::primeira_linha(&e), true),
+            }
+        },
+        move |(m, e)| Msg::Resp(origem, m, e),
+    )
+}
+
+/// **O quê:** lê o sino: sincroniza (rede) e/ou marca como lidas, e SEMPRE relê a lista.
+/// **Onde:** a abertura, o painel, o relógio de 90 s e depois de concluir. Falha de qualquer passo
+/// vira o `Err` da lista (o painel mostra) — nada é engolido.
+pub fn sino(dir: PathBuf, sincronizar: bool, marcar: bool) -> Task<Msg> {
+    Task::perform(
+        async move {
+            let rodar = |args: &[&str]| super::externos::rodar("schematize", &dir, args);
+            if sincronizar {
+                rodar(&["notifications", "--sync"])?;
+            }
+            if marcar {
+                rodar(&["notifications", "--lidas"])?;
+            }
+            let t = rodar(&["notifications", "--historico"])?;
+            super::sino::ler_notificacoes(&t)
+        },
+        |r| Msg::Sino(super::msg::SinoMsg::Carregado(r)),
+    )
+}
+
+/// **O quê:** o relógio de 90 s do sino. **Onde:** depois de cada leitura sincronizada.
+pub fn espera_sino() -> Task<Msg> {
+    Task::perform(esperar(Duration::from_secs(90)), |()| Msg::Sino(super::msg::SinoMsg::Tick))
+}
+
+/// **O quê:** a versão do hub (`schematize --version`). **Onde:** a abertura.
+pub fn versao_do_hub(dir: PathBuf) -> Task<Msg> {
+    Task::perform(
+        async move {
+            super::externos::rodar("schematize", &dir, &["--version"])
+                .and_then(|t| super::externos::ler_versao_do_hub(&t))
+        },
+        |r| Msg::Topo(super::msg::TopoMsg::Versao(r)),
+    )
+}
+
+/// **O quê:** relê a lista de projetos do seletor. **Onde:** a abertura e depois de fixar.
+pub fn projetos(atual: PathBuf) -> Task<Msg> {
+    Task::perform(async move { super::projeto::carregar_lista(&atual) }, Msg::Projetos)
+}
+
 /// **O quê:** espera `d` SEM ocupar uma thread do executor: uma thread própria dorme e depois
 /// larga o emissor de um canal de uma posição — o receptor acorda com `Canceled`, que AQUI é o aviso.
 ///

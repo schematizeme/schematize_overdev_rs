@@ -44,6 +44,17 @@ pub fn no_terminal(dir: &Path, args: &[&str]) -> (String, bool) {
     }
 }
 
+/// **O quê:** o mesmo que [`no_terminal`], para o binário `bin` (de OUTRO app: `schematize upgrade`).
+/// **Onde:** a ação «Atualizar» do sino. O comando aparece no terminal ANTES de rodar.
+pub fn no_terminal_de(bin: &str, dir: &Path, args: &[&str]) -> (String, bool) {
+    let cmd = cli::comando_para_terminal(bin, dir, args);
+    if terminal::abrir(&cmd) {
+        ("terminal aberto — o comando aparece lá antes de rodar.".to_string(), false)
+    } else {
+        (format!("não achei um terminal. Rode: {cmd}"), true)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

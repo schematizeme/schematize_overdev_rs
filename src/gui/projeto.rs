@@ -21,7 +21,7 @@
 
 use super::carga::Escopo;
 use super::estado::App;
-use super::msg::Msg;
+use super::msg::{Msg, Opcao};
 use super::tema;
 use super::widgets::{btn, modal, negrito, status, txt};
 use iced::widget::{button, column, row, scrollable, text_input, Space};
@@ -39,10 +39,57 @@ pub struct Seletor {
     /// A lista chegou? `false` enquanto a varredura roda.
     pub carregando: bool,
     pub lista: Vec<Project>,
+    /// As entradas do seletor flutuante do topo (fixados primeiro, e «Outro caminho…» no fim).
+    pub opcoes: Vec<Opcao>,
+    /// O estado do `combo_box` do topo (o texto digitado e as opções filtradas).
+    pub combo: iced::widget::combo_box::State<Opcao>,
     /// O que a pessoa digitou/colou no campo de caminho.
     pub caminho: String,
     /// Por que o caminho foi recusado. Vazio = sem erro.
     pub erro: String,
+}
+
+impl Seletor {
+    /// **O quê:** o seletor fechado, MANTENDO a lista de projetos já lida. **Onde:** a troca de
+    /// projeto: o seletor flutuante do topo precisa da lista sempre à mão, não só com o modal aberto.
+    pub fn fechado(&self) -> Seletor {
+        Seletor {
+            lista: self.lista.clone(),
+            opcoes: self.opcoes.clone(),
+            combo: self.combo.clone(),
+            ..Seletor::default()
+        }
+    }
+
+    /// **O quê:** esvazia o filtro do `combo_box` (todas as opções aparecem). **Onde:** o seletor
+    /// do topo ao abrir: com o nome do projeto atual no campo só ELE passaria no filtro.
+    pub fn mostrar_todos(&mut self) {
+        self.combo = iced::widget::combo_box::State::new(self.opcoes.clone());
+    }
+
+    /// **O quê:** refaz as opções e o estado do `combo_box` para o projeto `atual`. **Onde:** a
+    /// chegada da lista e a troca de projeto — o texto do campo é SEMPRE o projeto atual.
+    pub fn refazer(&mut self, atual: &Path) {
+        self.opcoes = opcoes_de(&self.lista, atual);
+        let sel = self.opcoes.iter().find(|o| Path::new(&o.caminho) == atual).cloned();
+        self.combo =
+            iced::widget::combo_box::State::with_selection(self.opcoes.clone(), sel.as_ref());
+    }
+}
+
+/// **O quê:** as entradas do seletor flutuante: o projeto ATUAL (se a varredura não o achou, entra
+/// no topo), os da lista na ordem em que vieram (fixados primeiro) e «Outro caminho…». **Onde:**
+/// `Msg::Projetos` e [`Seletor::fechado`]. PURA.
+pub fn opcoes_de(lista: &[Project], atual: &Path) -> Vec<Opcao> {
+    let nome =
+        |p: &Path| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let mut v: Vec<Opcao> = Vec::new();
+    if !lista.iter().any(|p| Path::new(&p.path) == atual) {
+        v.push(Opcao { rotulo: nome(atual), caminho: atual.display().to_string() });
+    }
+    v.extend(lista.iter().map(|p| Opcao { rotulo: p.name.clone(), caminho: p.path.clone() }));
+    v.push(Opcao { rotulo: "Outro caminho…".to_string(), caminho: String::new() });
+    v
 }
 
 /// **O quê:** o arquivo da memória do último projeto, dentro de `dados`. **Onde:**
@@ -170,6 +217,8 @@ impl App {
             }
             Msg::Projetos(lista) => {
                 self.seletor.lista = lista;
+                let atual = self.dir.clone();
+                self.seletor.refazer(&atual);
                 self.seletor.carregando = false;
                 iced::Task::none()
             }
@@ -194,7 +243,7 @@ impl App {
     /// modal (que continua aberto para a pessoa corrigir) e nada é relido nem gravado. Escolher o
     /// projeto em que já está só fecha o modal e relê. Falhar ao LEMBRAR não impede a troca, mas
     /// a falha aparece na mensagem do topo.
-    fn trocar_para(&mut self, entrada: &str) -> iced::Task<Msg> {
+    pub(super) fn trocar_para(&mut self, entrada: &str) -> iced::Task<Msg> {
         let dir = match validar(entrada) {
             Ok(d) => d,
             Err(e) => {
@@ -203,7 +252,7 @@ impl App {
             }
         };
         if dir == self.dir {
-            self.seletor = Seletor::default();
+            self.seletor = self.seletor.fechado();
             return self.recarregar(Escopo::TUDO);
         }
         self.trocar_projeto(dir.clone());

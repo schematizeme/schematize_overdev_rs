@@ -53,6 +53,20 @@ pub fn btn<'a, M: Clone + 'a>(
         .into()
 }
 
+/// **O quê:** o botão de ÍCONE (um glifo Unicode maior, quadrado), como os do topo do hub. **Onde:**
+/// o cabeçalho. Glifo em texto e não SVG: nenhuma dependência nova.
+pub fn btn_icone<'a, M: Clone + 'a>(
+    c: Cores,
+    glifo: impl Into<String>,
+    msg: Option<M>,
+) -> Element<'a, M> {
+    button(text(glifo.into()).size(18).font(SEMI))
+        .padding([2, 10])
+        .on_press_maybe(msg)
+        .style(tema::botao(c, false))
+        .into()
+}
+
 /// **O quê:** o chip (pílula de filtro) selecionável. **Onde:** o filtro do checklist.
 pub fn chip<'a, M: Clone + 'a>(
     c: Cores,

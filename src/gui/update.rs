@@ -78,6 +78,9 @@ impl App {
             | Msg::NotaTask(_)
             | Msg::NotaCorrecao(_)
             | Msg::NotaAdicionar(_) => self.atualizar_notas(m),
+            Msg::Topo(m) => self.atualizar_topo(m),
+            Msg::Home(m) => self.atualizar_home(m),
+            Msg::Sino(m) => self.atualizar_sino(m),
             Msg::AbrirSeletor
             | Msg::FecharSeletor
             | Msg::Projetos(_)
@@ -108,6 +111,17 @@ impl App {
                 self.resposta_de_restaurar(msg, erro);
                 Task::none()
             }
+            Origem::Home => {
+                self.resposta_da_home(msg, erro);
+                Task::none()
+            }
+            Origem::Iniciar => self.resposta_de_iniciar(msg, erro),
+            Origem::Topo => {
+                self.resposta_do_topo(msg, erro);
+                Task::none()
+            }
+            Origem::Fixar => self.resposta_de_fixar(msg, erro),
+            Origem::Sino => self.resposta_do_sino(msg, erro),
         }
     }
 }

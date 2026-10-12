@@ -16,6 +16,8 @@
 //! É PLATAFORMA (D4): a cópia não sabe o que é overdev, run ou checklist. O que ela sabe do
 //! domínio entra por parâmetro, como string já montada pelo chamador.
 
+use std::path::Path;
+
 /// **O quê:** um binário existe no `$PATH`? **Onde:** [`abrir`].
 ///
 /// Via `command -v` num shell, e não varrendo o `$PATH` à mão: o shell já sabe de alias, de
@@ -71,6 +73,76 @@ pub fn abrir(comando: &str) -> bool {
         }
     }
     false
+}
+
+/// **O quê:** solta `prog args…` desacoplado desta janela (stdio nulo) e diz o que fez. **Onde:**
+/// [`abrir_url`], [`abrir_pasta`], [`abrir_vscode`], [`nova_janela`]. `Err` carrega o motivo e o
+/// que fazer à mão.
+fn soltar(prog: &str, args: &[String], feito: String, a_mao: &str) -> Result<String, String> {
+    if !existe(prog) {
+        return Err(format!("não achei `{prog}` para abrir. {a_mao}"));
+    }
+    let mut cmd = std::process::Command::new(prog);
+    cmd.args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+    cmd.spawn().map(|_| feito).map_err(|e| format!("não consegui rodar `{prog}` ({e}). {a_mao}"))
+}
+
+/// **O quê:** abre um link no navegador (`xdg-open`). **Onde:** a ação de notícia do sino. O
+/// chamador JÁ validou que é `https` ([`super::sino::url_segura`]).
+pub fn abrir_url(url: &str) -> Result<String, String> {
+    soltar(
+        "xdg-open",
+        &[url.to_string()],
+        format!("aberto no navegador: {url}"),
+        &format!("Abra à mão: {url}"),
+    )
+}
+
+/// **O quê:** abre a pasta do projeto no gerenciador de arquivos. **Onde:** o ícone de pasta do topo.
+pub fn abrir_pasta(dir: &Path) -> Result<String, String> {
+    let d = dir.display().to_string();
+    soltar(
+        "xdg-open",
+        std::slice::from_ref(&d),
+        format!("pasta aberta: {d}"),
+        &format!("Abra à mão: {d}"),
+    )
+}
+
+/// **O quê:** abre o projeto no VS Code (`code <pasta>`). **Onde:** o ícone `</>` do topo. Sem o
+/// `code` o erro diz isso — não cai em outro editor por conta própria.
+pub fn abrir_vscode(dir: &Path) -> Result<String, String> {
+    let d = dir.display().to_string();
+    soltar(
+        "code",
+        std::slice::from_ref(&d),
+        format!("aberto no VS Code: {d}"),
+        &format!("Abra à mão: {d}"),
+    )
+}
+
+/// **O quê:** abre ESTA janela noutro processo, no mesmo projeto (`--dir`). **Onde:** o ícone de
+/// nova janela: overdev de projetos em paralelo, sem estado compartilhado.
+pub fn nova_janela(dir: &Path) -> Result<String, String> {
+    let exe =
+        std::env::current_exe().map_err(|e| format!("não sei qual é o meu executável: {e}"))?;
+    let d = dir.display().to_string();
+    let mut cmd = std::process::Command::new(&exe);
+    cmd.arg("--dir")
+        .arg(&d)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+    cmd.spawn()
+        .map(|_| format!("nova janela aberta em {d}"))
+        .map_err(|e| format!("não consegui abrir a nova janela ({}): {e}", exe.display()))
 }
 
 /// **O quê:** qual programa abre `caminho` no editor do usuário, e com que argumentos. PURA.

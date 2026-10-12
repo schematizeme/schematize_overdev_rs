@@ -8,12 +8,15 @@
 
 use super::carga::Carga;
 use super::projeto::Project;
+use super::sino::Notif;
 use iced::widget::text_editor;
 use std::sync::Arc;
 
 /// As abas, na ordem em que aparecem. **Onde:** o cabeçalho e o `--aba`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Aba {
+    /// A tela de projeto do hub: iniciar overdev, ações de skills, commits.
+    Projeto,
     Perguntas,
     Checklist,
     Historico,
@@ -50,6 +53,16 @@ pub enum Origem {
     Arquivo,
     /// «Restaurar» um snapshot (terminal): a mensagem vai ao topo da janela.
     Restaurar,
+    /// Resultado de uma ação da aba Projeto (skill, afazeres, painel, terminal, rerun).
+    Home,
+    /// `start`: com sucesso relê tudo e limpa o campo do objetivo.
+    Iniciar,
+    /// Ações do topo (pasta, editor, nova janela, fixar): vira o aviso do topo.
+    Topo,
+    /// `schematize projects add|remove`: aviso no modal e relista os projetos.
+    Fixar,
+    /// `schematize notifications --concluir`: aviso no painel e relê a lista.
+    Sino,
 }
 
 /// Tudo que pode acontecer na janela.
@@ -124,4 +137,73 @@ pub enum Msg {
     SeletorAbrirCaminho,
     /// Escolheu um projeto da lista.
     SeletorEscolher(String),
+
+    // ---- cabeçalho, aba Projeto e sino ----
+    Topo(TopoMsg),
+    Home(HomeMsg),
+    Sino(SinoMsg),
+}
+
+/// O seletor de projeto do topo escolhido: um projeto da lista, ou a entrada «Outro caminho…».
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Opcao {
+    pub rotulo: String,
+    /// Vazio = a entrada «Outro caminho…» (abre o campo de caminho).
+    pub caminho: String,
+}
+
+impl std::fmt::Display for Opcao {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.rotulo)
+    }
+}
+
+/// O cabeçalho: seletor, os cinco ícones, a versão do hub e o gerenciador de projetos fixados.
+#[derive(Debug, Clone)]
+pub enum TopoMsg {
+    Escolher(Opcao),
+    /// O seletor abriu: o filtro zera para mostrar TODOS os projetos.
+    ComboAbrir,
+    /// O seletor fechou sem escolher: volta a mostrar o projeto atual.
+    ComboFechar,
+    AbrirPasta,
+    AbrirCodigo,
+    NovaJanela,
+    /// A versão do hub (`schematize --version`) chegou.
+    Versao(Result<String, String>),
+    GerenciarAbrir,
+    GerenciarFechar,
+    GerenciarCaminho(String),
+    Fixar,
+    Desafixar(String),
+}
+
+/// A aba Projeto (a tela de Overdev do hub + «Iniciar overdev»).
+#[derive(Debug, Clone)]
+pub enum HomeMsg {
+    Objetivo(String),
+    Iniciar,
+    IniciarConfirmar,
+    IniciarCancelar,
+    /// O botão de ação de skill de índice `i` (de `schematize-skills acoes`).
+    Skill(usize),
+    GerarAfazeres,
+    Navegador,
+    Terminal,
+    Recarregar,
+    Rerodar,
+    Pagina(usize),
+}
+
+/// O sino de notificações.
+#[derive(Debug, Clone)]
+pub enum SinoMsg {
+    Alternar,
+    /// A lista chegou (ou o motivo de não ter chegado).
+    Carregado(Result<Vec<Notif>, String>),
+    /// O relógio de 90 s: sincroniza e relê.
+    Tick,
+    Concluir(String),
+    /// `(kind, ação)` do item.
+    Acao(String, String),
 }
