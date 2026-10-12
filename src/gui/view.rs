@@ -16,9 +16,10 @@ use iced::widget::{column, container, progress_bar, row, stack, Space};
 use iced::{Element, Fill, Length};
 
 impl App {
-    /// **O quê:** o título da janela. **Onde:** o `iced::application`.
+    /// **O quê:** o título da janela, `Overdev · uikit iced · tiny-skia` (contrato dos kits de UI:
+    /// `Overdev · uikit <kit>[ · <renderer>]`). **Onde:** o `iced::application`.
     pub fn titulo(&self) -> String {
-        "schematize · overdev".to_string()
+        "Overdev · uikit iced · tiny-skia".to_string()
     }
 
     /// **O quê:** a tela inteira, com o modal por cima quando há um aberto.
@@ -124,5 +125,21 @@ impl App {
             );
         }
         col.into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::msg::Aba;
+    use super::*;
+    use std::path::PathBuf;
+
+    /// **O título da janela NOMEIA o toolkit e o renderer** (`Overdev · uikit iced · tiny-skia`): as
+    /// janelas dos sete kits de UI são comparadas lado a lado e precisam ser distinguíveis.
+    #[test]
+    fn o_titulo_nomeia_o_toolkit_e_o_renderer() {
+        let a =
+            App::novo(PathBuf::from("/p/a"), PathBuf::from("/n"), "v".into(), Aba::Projeto, true);
+        assert_eq!(a.titulo(), "Overdev · uikit iced · tiny-skia");
     }
 }
