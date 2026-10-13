@@ -1,6 +1,6 @@
 [package]
 name = "schematize-overdev"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "schematize Overdev: fila, trava, supervisor e gate — o motor de um run, sem precisar do hub."
 license = "MIT"
