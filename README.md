@@ -26,3 +26,10 @@ isso o app novo foi instalado e provado ANTES de o hub perder o domínio, nunca 
 
 O comando gravado no `settings.json` procura o `schematize-overdev` e, se não achar, cai no
 `schematize overdev …`. Os dois formatos funcionam, e quem tem o antigo não precisa fazer nada.
+
+## A janela (`schematize-overdev-gui`)
+
+Desde a **0.2.0** a janela é **iced 0.14 com o renderer `tiny-skia`** (CPU, sem `wgpu`), no lugar
+do Slint — paridade com a tela de Overdev do hub. O iced carrega x11/wayland/xkbcommon por
+`dlopen`: **não há libs `-dev` de sistema** para compilar nem para o CI. O release publica os mesmos
+assets de antes (`schematize-overdev-*` e `schematize-overdev-gui-*`).
