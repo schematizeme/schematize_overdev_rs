@@ -127,18 +127,29 @@ fn main() -> iced::Result {
     iced::application(move || iniciar(&args), App::update, App::view)
         .title(App::titulo)
         .theme(|a: &App| a.tema.clone())
-        .window(window::Settings {
-            size: Size::new(980.0, 720.0),
-            min_size: Some(Size::new(680.0, 480.0)),
-            // O `StartupWMClass` do `.desktop` é o nome deste binário: sem o mesmo id na janela
-            // o lançador não a casa com o ícone.
-            platform_specific: window::settings::PlatformSpecific {
-                application_id: "schematize-overdev-gui".to_string(),
-                ..Default::default()
-            },
-            ..window::Settings::default()
-        })
+        .window(config_janela())
         .run()
+}
+
+/// O quê: monta as `window::Settings` da janela (tamanho, mínimo e, no Linux, o `application_id`).
+/// Onde: chamada por `main` ao configurar o `iced::application`.
+/// Por que separada: `PlatformSpecific::application_id` SÓ existe com `target_os = "linux"` no iced
+/// 0.14 (no macOS/Windows a struct tem outros campos); o literal incondicional quebrava o build
+/// release de macOS e Windows. O `cfg` fica num bloco só, sem `..Default::default()` por alvo.
+fn config_janela() -> window::Settings {
+    #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
+    let mut s = window::Settings {
+        size: Size::new(980.0, 720.0),
+        min_size: Some(Size::new(680.0, 480.0)),
+        ..window::Settings::default()
+    };
+    // O `StartupWMClass` do `.desktop` é o nome deste binário: sem o mesmo id na janela o
+    // lançador não a casa com o ícone. Conceito só do Linux (X11/Wayland).
+    #[cfg(target_os = "linux")]
+    {
+        s.platform_specific.application_id = "schematize-overdev-gui".to_string();
+    }
+    s
 }
 
 #[cfg(test)]
