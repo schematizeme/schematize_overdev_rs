@@ -20,6 +20,7 @@ pub mod nucleo;
 /// Garante o gestor de atualizações (market) na máquina — o "parasita".
 pub mod market_parasita;
 
+pub mod agentes;
 pub mod agentrun;
 pub mod agents;
 pub mod archive;

@@ -47,6 +47,9 @@ iced = { version = "=0.14.0", default-features = false, features = [
     "wayland",
 ] }
 
+# `agentes.toml` (ADR-0024): papéis, motores e escada. MIT/Apache-2.0; serde já é dependência.
+toml = "1.1"
+
 # Hora LOCAL do card da pergunta ("24/09 20:59"): o offset do fuso não sai do `std`. MIT/Apache-2.0,
 # só o relógio (`clock`) — mesma versão e features que o hub já usava para isso.
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
