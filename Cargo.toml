@@ -11,16 +11,29 @@ path = "src/lib.rs"
 
 [[bin]]
 name = "schematize-overdev"
-path = "src/main.rs"
+path = "src/bin_cli.rs"
 
 # UM repo, DOIS binários (ADR-0020). A janela sai do MESMO commit que o CLI, então não há
 # `git clone` no release, nem pino cruzado para envelhecer, nem CI compilando contra uma versão
 # diferente da que o release usa — as três classes de falha que o repo de janela separado custou.
+#
+# ADR-0026: os bins são só a casca (`main` de 5-15 linhas) que injeta a `Plataforma` Unix; o
+# corpo mora na lib (`overdev_casa::cli::run` e `overdev_casa::gui::run`), de modo que o repo
+# `schematize_windows_rs` monta os `.exe` com a `Plataforma`/`Hooks` dele.
 [[bin]]
 name = "schematize-overdev-gui"
-path = "src/gui/main.rs"
+path = "src/bin_gui.rs"
+required-features = ["gui"]
+
+[features]
+default = ["gui"]
+# A janela (iced) mora atrás de feature: quem só quer o CLI/lib (ex.: o repo Windows no CI do CLI)
+# não compila o toolkit.
+gui = ["dep:iced"]
 
 [dependencies]
+# TEMP(ADR-0026): trocar por git = "https://github.com/schematizeme/schematize_plataforma_rs", tag = "v0.2.0" ao publicar
+schematize_plataforma = { path = "../schematize_plataforma_rs", features = ["parasita","base","seams"] }
 clap = { version = "4", features = ["derive"] }
 # O `state.json` e o catálogo são serde; a janela consome o `--json` do binário.
 serde = { version = "1", features = ["derive"] }
@@ -40,7 +53,7 @@ portable-pty = "0.9.0"
 #     (GPU stack: wgpu, naga, ash...). Sem `crisp`/`web-colors`/`linux-theme-detection` (defaults).
 #   - `thread-pool`: o executor das `Task` (`futures::executor::ThreadPool`); é o menor. Sem tokio.
 #   - `x11` + `wayland`: os dois backends de janela do winit (a máquina do usuário tem os dois).
-iced = { version = "=0.14.0", default-features = false, features = [
+iced = { version = "=0.14.0", optional = true, default-features = false, features = [
     "tiny-skia",
     "thread-pool",
     "x11",
@@ -69,3 +82,8 @@ serde_json = "1"
 strip = true
 opt-level = 3
 lto = "thin"
+
+# A janela só existe com a feature `gui` (ADR-0026): sem ela não há `CARGO_BIN_EXE_…-gui`.
+[[test]]
+name = "janela"
+required-features = ["gui"]

@@ -8,7 +8,7 @@
 //! **Onde:** [`super::agentes_tela`] (a view e o glue com o disco/processos) e [`super::update`].
 
 use super::estado::Aviso;
-use overdev_casa::agentes::{Agentes, Disponibilidade, ErroAgentes, Motor, Papel};
+use crate::agentes::{Agentes, Disponibilidade, ErroAgentes, Motor, Papel};
 
 /// Qual arquivo a aba edita. **Onde:** o seletor «Global / Este projeto».
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

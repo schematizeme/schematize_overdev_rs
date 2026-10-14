@@ -24,9 +24,9 @@ use super::estado::App;
 use super::msg::{Msg, Opcao};
 use super::tema;
 use super::widgets::{btn, modal, negrito, status, txt};
+pub use crate::projects::Project;
 use iced::widget::{button, column, row, scrollable, text_input, Space};
 use iced::{Element, Fill, Length};
-pub use overdev_casa::projects::Project;
 use std::path::{Path, PathBuf};
 
 /// O nome do arquivo (na pasta de dados do app) que guarda o último projeto escolhido.
@@ -103,7 +103,7 @@ fn arquivo_ultimo(dados: &Path) -> PathBuf {
 /// **Onde:** [`super::iniciar`]. É a única função daqui que lê o ambiente (o HOME); o resto
 /// recebe a pasta por parâmetro, e por isso os testes usam uma pasta própria.
 pub fn dados_dir() -> PathBuf {
-    overdev_casa::nucleo::caminhos::dados_dir()
+    crate::nucleo::caminhos::dados_dir()
 }
 
 /// **O quê:** grava `dir` como o último projeto escolhido, em `dados`.
@@ -113,7 +113,7 @@ pub fn dados_dir() -> PathBuf {
 /// falhar calado deixaria a pessoa reabrir o projeto errado sem saber por quê.
 pub fn gravar_ultimo(dados: &Path, dir: &Path) -> Result<(), String> {
     let texto = dir.to_str().ok_or("o caminho do projeto não é texto UTF-8 válido")?;
-    overdev_casa::nucleo::caminhos::escreve_atomico(&arquivo_ultimo(dados), texto)
+    crate::nucleo::caminhos::escreve_atomico(&arquivo_ultimo(dados), texto)
 }
 
 /// **O quê:** o último projeto gravado em `dados`, SE a pasta ainda existir.
@@ -175,7 +175,7 @@ pub fn validar_com_home(entrada: &str, home: Option<&Path>) -> Result<PathBuf, S
 
 /// **O quê:** [`validar_com_home`] com a home do ambiente. **Onde:** [`App::trocar_para`].
 pub fn validar(entrada: &str) -> Result<PathBuf, String> {
-    let home = overdev_casa::nucleo::util::home();
+    let home = crate::nucleo::util::home();
     validar_com_home(entrada, Some(&home))
 }
 
@@ -189,16 +189,16 @@ pub fn listar(dev_dirs: &[String], fixados: &[String], atual: &Path) -> Vec<Proj
     if dev_dirs.is_empty() {
         let pai: Vec<String> =
             atual.parent().map(|p| p.display().to_string()).into_iter().collect();
-        return overdev_casa::projects::scan_with_pins(&pai, fixados);
+        return crate::projects::scan_with_pins(&pai, fixados);
     }
-    overdev_casa::projects::scan_with_pins(dev_dirs, fixados)
+    crate::projects::scan_with_pins(dev_dirs, fixados)
 }
 
 /// **O quê:** lê a config do app (pastas de desenvolvimento e fixados) e monta a lista.
 ///
 /// **Onde:** a `Task` de `Msg::AbrirSeletor`. BLOQUEIA na varredura do disco: nunca no `update`.
 pub fn carregar_lista(atual: &Path) -> Vec<Project> {
-    let c = overdev_casa::config::load();
+    let c = crate::config::load();
     listar(&c.dev_dirs, &c.projects, atual)
 }
 

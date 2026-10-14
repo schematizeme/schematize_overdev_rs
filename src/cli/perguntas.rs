@@ -1,13 +1,13 @@
 //! Os subcomandos da FILA DE PERGUNTAS — `overdev ask|questions|reply|review`.
 //!
 //! **Onde:** despachados por `main.rs`. O modelo e as invariantes estão em
-//! [`overdev_casa::overdev::pergunta`]; aqui está só a borda de linha de comando.
+//! [`crate::overdev::pergunta`]; aqui está só a borda de linha de comando.
 //!
 //! **Por que uma borda separada do `cli/overdev.rs`:** aquele arquivo já tem 211 linhas e trata
 //! do LAÇO (rodar, dividir, snapshot). A fila é outra superfície — quem a usa é o agente para
 //! perguntar e a janela para responder.
 
-use overdev_casa::overdev::pergunta::{self, Kind, Opcao, Pergunta, Resposta};
+use crate::overdev::pergunta::{self, Kind, Opcao, Pergunta, Resposta};
 use std::path::PathBuf;
 
 /// **O quê:** o diretório do projeto atual.

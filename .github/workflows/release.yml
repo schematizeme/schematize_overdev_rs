@@ -74,9 +74,10 @@ jobs:
             target: x86_64-apple-darwin
             asset: schematize-overdev-macos-x86_64
             asset_gui: schematize-overdev-gui-macos-x86_64
-          - runner: windows-latest
-            asset: schematize-overdev-windows-x86_64.exe
-            asset_gui: schematize-overdev-gui-windows-x86_64.exe
+          # WINDOWS: este repo e Unix-only (ADR-0026). O `.exe` (CLI + janela) e publicado pelo
+          # repo `schematize_windows_rs`, que depende desta lib (`overdev_casa::cli::run` e
+          # `overdev_casa::gui::run`) com a Plataforma/Hooks do Windows. Nao reintroduzir um
+          # runner windows aqui.
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -115,13 +116,8 @@ jobs:
           set -euo pipefail
           dir="target/${{ matrix.target }}/release"
           [ -n "${{ matrix.target }}" ] || dir="target/release"
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cp "$dir/schematize-overdev.exe"     "${{ matrix.asset }}"
-            cp "$dir/schematize-overdev-gui.exe" "${{ matrix.asset_gui }}"
-          else
-            cp "$dir/schematize-overdev"     "${{ matrix.asset }}"
-            cp "$dir/schematize-overdev-gui" "${{ matrix.asset_gui }}"
-          fi
+          cp "$dir/schematize-overdev"     "${{ matrix.asset }}"
+          cp "$dir/schematize-overdev-gui" "${{ matrix.asset_gui }}"
           # **Sem `|| true` em nenhum dos `cp`, e é deliberado.** Janela que não compilou tem de
           # reprovar o job: publicar o CLI sem a janela é o release "verde com um asset a menos"
           # que este repo foi desenhado para não repetir.

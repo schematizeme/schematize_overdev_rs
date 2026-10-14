@@ -146,15 +146,12 @@ pub fn home_app_dir() -> PathBuf {
 ///
 /// **Onde:** o painel HTML do overdev, quando se pede "abrir no navegador".
 ///
-/// **Não devolve erro de propósito.** `xdg-open` falha em ambiente sem sessão gráfica, e um
+/// **Não devolve erro de propósito.** O abridor falha em ambiente sem sessão gráfica, e um
 /// `Result` aqui obrigaria cada chamador a decidir o que fazer com uma falha sobre a qual não
 /// há o que fazer — o painel já está no disco, e o caminho dele aparece na tela.
 pub fn open_url(url: &str) {
-    let _ = std::process::Command::new("xdg-open")
-        .arg(url)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn();
+    // Pelo seam `Abridor` da plataforma (xdg-open/open); o erro é descartado de propósito.
+    let _ = crate::ambiente::plat().abridor.abrir(url);
 }
 
 /// **O quê:** o caminho ABSOLUTO do próprio binário.

@@ -19,6 +19,7 @@
 //! aquilo é gente, e insistir viraria laço infinito.
 
 use crate::agentrun;
+use schematize_plataforma::seams::processos::{Modo, Processos};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -27,7 +28,7 @@ use std::time::Duration;
 const RONDA_SEGS: u64 = 30;
 
 /// Quantas rondas seguidas sem agente vivo antes de relançar. Evita relançar durante o
-/// intervalo em que o terminal está subindo (o `claude` demora a aparecer no /proc).
+/// intervalo em que o terminal está subindo (o `claude` demora a aparecer na lista de processos).
 const RONDAS_ATE_RELANCAR: u32 = 2;
 
 /// Teto de relançamentos de uma supervisão. Guardrail anti-loop: se o agente morre toda
@@ -36,37 +37,18 @@ pub const MAX_RELANCAMENTOS: u32 = 20;
 
 /// Existe um `claude` vivo com o cwd DENTRO deste projeto?
 ///
-/// O quê: varre `/proc/<pid>/cwd` e casa contra a raiz do projeto. Onde: [`supervise`].
+/// O quê: pergunta ao seam `Processos` por um `claude` com cwd na raiz do projeto. Onde: [`supervise`].
 /// Por que por cwd: a contagem de `crate::agents` é da máquina inteira; aqui precisamos
 /// saber se **este** run tem dono, senão um claude de outro projeto mascararia a morte.
 /// **Entrada:** raiz do projeto (idealmente absoluta). **Saída:** `true` se achou.
-/// **Efeitos:** só leitura de `/proc`; erro de permissão é tratado como "não é este".
+/// **Efeitos:** só leitura do sistema; erro de permissão é tratado como "não é este".
 pub fn agente_vivo_em(projeto: &Path) -> bool {
-    let Ok(entries) = std::fs::read_dir("/proc") else {
-        return false;
-    };
-    for e in entries.flatten() {
-        let Some(pid) = e.file_name().to_str().and_then(|s| s.parse::<u32>().ok()) else {
-            continue;
-        };
-        let Ok(raw) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
-            continue;
-        };
-        let args: Vec<String> = raw
-            .split(|b| *b == 0)
-            .filter(|s| !s.is_empty())
-            .map(|s| String::from_utf8_lossy(s).into_owned())
-            .collect();
-        if args.is_empty() || !crate::agents::cmdline_e_claude(&args) {
-            continue;
-        }
-        if let Ok(cwd) = std::fs::read_link(format!("/proc/{pid}/cwd")) {
-            if cwd.starts_with(projeto) {
-                return true;
-            }
-        }
-    }
-    false
+    agente_vivo_em_com(&*crate::ambiente::plat().processos, projeto)
+}
+
+/// **O quê:** [`agente_vivo_em`] sobre um `Processos` dado. **Onde:** a função acima e os testes.
+pub fn agente_vivo_em_com(p: &dyn Processos, projeto: &Path) -> bool {
+    p.em_dir("claude", projeto, Modo::Prefixo)
 }
 
 /// O run ainda tem trabalho de MÁQUINA aberto?
@@ -182,33 +164,18 @@ pub fn supervise(projeto: &Path, max: u32) -> u32 {
 
 /// Já existe um supervisor vigiando este projeto?
 ///
-/// O quê: varre `/proc` atrás de um `schematize … overdev supervise` cujo cwd é o projeto.
-/// Onde: [`garantir_supervisor`], pra não subir dois. **Efeitos:** só leitura de `/proc`.
+/// O quê: pergunta ao seam `Processos` por um `schematize … overdev supervise` cujo cwd é o projeto.
+/// Onde: [`garantir_supervisor`], pra não subir dois. **Efeitos:** só leitura do sistema.
 pub fn supervisor_vivo_em(projeto: &Path) -> bool {
-    let Ok(entries) = std::fs::read_dir("/proc") else {
-        return false;
-    };
-    for e in entries.flatten() {
-        let Some(pid) = e.file_name().to_str().and_then(|s| s.parse::<u32>().ok()) else {
-            continue;
-        };
-        if pid == std::process::id() {
-            continue;
-        }
-        let Ok(raw) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
-            continue;
-        };
-        let linha = String::from_utf8_lossy(&raw).replace('\0', " ");
-        if !(linha.contains("overdev") && linha.contains("supervise")) {
-            continue;
-        }
-        if let Ok(cwd) = std::fs::read_link(format!("/proc/{pid}/cwd")) {
-            if cwd == projeto {
-                return true;
-            }
-        }
-    }
-    false
+    supervisor_vivo_em_com(&*crate::ambiente::plat().processos, projeto)
+}
+
+/// **O quê:** [`supervisor_vivo_em`] sobre um `Processos` dado: algum processo (que não eu) com
+/// `overdev` e `supervise` na linha de comando E cwd == projeto.
+///
+/// **Onde:** a função acima e os testes.
+pub fn supervisor_vivo_em_com(p: &dyn Processos, projeto: &Path) -> bool {
+    !p.pids_por_argv_em(&["overdev", "supervise"], projeto).is_empty()
 }
 
 /// Sobe um supervisor DESTACADO pra este projeto, se ainda não houver um.
@@ -248,6 +215,25 @@ pub fn garantir_supervisor(projeto: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::processos_falso::Falso;
+
+    /// O agente vivo é a pergunta `claude` + cwd com PREFIXO (subpasta do projeto também vale).
+    #[test]
+    fn agente_vivo_pergunta_claude_com_prefixo() {
+        let f = Falso { em_dir: true, ..Falso::default() };
+        assert!(agente_vivo_em_com(&f, Path::new("/p")));
+        assert_eq!(f.feitas(), ["em_dir:claude:Prefixo"]);
+        assert!(!agente_vivo_em_com(&Falso::default(), Path::new("/p")), "ninguém = morto");
+    }
+
+    /// O supervisor vivo é a pergunta `overdev`+`supervise` com cwd == projeto.
+    #[test]
+    fn supervisor_vivo_pergunta_argv_e_cwd() {
+        let f = Falso { argv_em: vec![42], ..Falso::default() };
+        assert!(supervisor_vivo_em_com(&f, Path::new("/p")));
+        assert_eq!(f.feitas(), ["argv_em:overdev+supervise"]);
+        assert!(!supervisor_vivo_em_com(&Falso::default(), Path::new("/p")));
+    }
 
     /// O QUE: sem trabalho de máquina, encerra — mesmo sem agente. É o que impede o
     /// supervisor de ficar relançando eternamente um run já concluído.

@@ -29,9 +29,11 @@ use crate::overdev;
 // o que fica aqui é a sessão acoplada (PTY). O arquivo único passava de 900 linhas — acima
 // do teto duro de 750 da casa.
 mod lancador;
+mod pathenv;
 mod prompt_agentes;
 mod prompts;
 pub use lancador::*;
+pub use pathenv::{extras_unix, montar_path};
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 pub use prompts::*;
 use std::io::{Read, Write};
@@ -133,20 +135,7 @@ impl AgentRunner for ClaudeRunner {
         if let Some(home) = std::env::var_os("HOME") {
             let home = home.to_string_lossy().to_string();
             let base = std::env::var("PATH").unwrap_or_default();
-            let mut parts: Vec<String> =
-                base.split(':').filter(|s| !s.is_empty()).map(String::from).collect();
-            for e in [
-                format!("{home}/.local/bin"),
-                format!("{home}/.cargo/bin"),
-                "/usr/local/bin".to_string(),
-                "/usr/bin".to_string(),
-                "/bin".to_string(),
-            ] {
-                if !parts.contains(&e) {
-                    parts.push(e);
-                }
-            }
-            cmd.env("PATH", parts.join(":"));
+            cmd.env("PATH", montar_path(':', &base, &extras_unix(&home)));
         }
         let child =
             pair.slave.spawn_command(cmd).map_err(|e| format!("falha ao spawnar `claude`: {e}"))?;

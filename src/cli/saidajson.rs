@@ -11,8 +11,8 @@
 //! alguém renomeia um campo do domínio, em silêncio e sem passar por revisão; escrito à mão, a
 //! mudança de forma aparece no diff — e há teste que fixa cada nome.
 
-use overdev_casa::overdev;
-use overdev_casa::overdev::pergunta::Pergunta;
+use crate::overdev;
+use crate::overdev::pergunta::Pergunta;
 
 /// **O quê:** escapa uma string para dentro de JSON.
 ///
@@ -246,7 +246,7 @@ pub fn documento_checklist(
 /// **O quê:** o documento `history --json` — os snapshots do projeto, do mais novo ao mais velho.
 ///
 /// **Onde:** `comandos::overdev_history` com `--json`, e a janela.
-pub fn documento_historico(snaps: &[overdev_casa::overdevdb::SnapshotMeta]) -> String {
+pub fn documento_historico(snaps: &[crate::overdevdb::SnapshotMeta]) -> String {
     let l = snaps
         .iter()
         .map(|m| {
@@ -273,13 +273,13 @@ pub fn documento_historico(snaps: &[overdev_casa::overdevdb::SnapshotMeta]) -> S
 /// hub), o hook antigo continua lá, válido e desatualizado. Reescrever é barato; descobrir
 /// tarde que o `guard` não roda há semanas, não.
 pub fn hooks(repair: bool, json: bool) -> Result<(), String> {
-    use overdev_casa::settings;
-    let exe = overdev_casa::nucleo::util::self_exe();
+    use crate::settings;
+    let hooks = crate::ambiente::hooks();
     if repair {
-        settings::refresh_hooks(&exe)?;
+        settings::refresh_hooks(hooks)?;
     }
     let ligados = settings::overdev_enabled();
-    let em_dia = settings::hooks_atualizados(&exe);
+    let em_dia = settings::hooks_atualizados(hooks);
     let valido = settings::settings_valid();
     // **`None` é AUSENTE, e não inválido.** Um `settings.json` que não existe é o caso de quem
     // nunca ligou os hooks; dizer "INVÁLIDO" ali mandaria a pessoa consertar um arquivo que

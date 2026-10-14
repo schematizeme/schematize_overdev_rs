@@ -23,12 +23,8 @@ use std::process::{Command, Stdio};
 ///
 /// **Onde:** [`bin`]. Constante e não literal espalhado: nome que não bate com o dono mata o
 /// update em silêncio — o comando simplesmente não é encontrado.
-fn nome() -> &'static str {
-    if cfg!(windows) {
-        "schematize-overdev.exe"
-    } else {
-        "schematize-overdev"
-    }
+fn nome() -> String {
+    format!("schematize-overdev{}", std::env::consts::EXE_SUFFIX)
 }
 
 /// **O quê:** o caminho do binário headless: ao lado deste executável → `~/.cargo/bin` → PATH.
@@ -136,9 +132,10 @@ mod tests {
     #[test]
     fn o_nome_do_binario_conhece_a_plataforma_e_o_dono() {
         let n = nome();
+        let n = n.as_str();
         assert!(n.starts_with("schematize-overdev"), "{n}");
         assert!(!n.contains("-gui"), "o par headless, não a janela: {n}");
-        assert_eq!(n.ends_with(".exe"), cfg!(windows), "{n}");
+        assert!(n.ends_with(std::env::consts::EXE_SUFFIX), "{n}");
     }
 
     /// `bin()` nunca devolve vazio.

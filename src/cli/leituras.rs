@@ -19,8 +19,8 @@
 //! Ausente é `null` onde faz sentido (o `modelo` sem transcript), nunca `""`.
 
 use crate::cli::saidajson::{esc, texto_ou_null};
-use overdev_casa::overdev::caixa::Entrada;
-use overdev_casa::{overdev, paths, usage};
+use crate::overdev::caixa::Entrada;
+use crate::{overdev, paths, usage};
 use std::path::{Path, PathBuf};
 
 /// Quantos itens abertos o monitor lista (o resto é só contagem no `progresso`).

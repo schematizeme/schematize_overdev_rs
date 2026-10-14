@@ -22,6 +22,7 @@
 //! travar o projeto. A trava cobre só a fusão, que é de milissegundos — o trabalho
 //! lento acontece fora dela (ver [`super::caixa`]).
 
+use schematize_plataforma::seams::processos::Processos;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -49,19 +50,6 @@ fn arquivo_de_trava(alvo: &Path) -> PathBuf {
     alvo.with_file_name(format!(".{nome}.trava"))
 }
 
-/// O processo `pid` ainda está vivo?
-///
-/// Só isso separa "alguém está trabalhando" de "alguém morreu segurando a trava".
-/// Sem esta checagem, um `kill -9` no momento errado travaria o projeto até alguém
-/// apagar o arquivo à mão — e ninguém sabe que precisa.
-fn vivo(pid: u32) -> bool {
-    if cfg!(target_os = "linux") {
-        return Path::new("/proc").join(pid.to_string()).exists();
-    }
-    // Sem /proc não dá pra saber sem libc; assume vivo e deixa a idade decidir.
-    true
-}
-
 /// A trava em `arquivo` está órfã: velha o bastante E sem dono vivo.
 ///
 /// O limiar de idade é PARÂMETRO, não constante embutida. Não é generalidade
@@ -74,6 +62,11 @@ fn vivo(pid: u32) -> bool {
 /// `set_mtime`, então a alternativa seria um helper que finge envelhecer o arquivo —
 /// um teste que não testa nada. Injetar o limiar é honesto e não depende do relógio.
 fn orfa_apos(arquivo: &Path, limiar: Duration) -> bool {
+    orfa_apos_com(&*crate::ambiente::plat().processos, arquivo, limiar)
+}
+
+/// **O quê:** [`orfa_apos`] sobre um `Processos` dado. **Onde:** a função acima e os testes.
+fn orfa_apos_com(proc: &dyn Processos, arquivo: &Path, limiar: Duration) -> bool {
     let Ok(md) = std::fs::metadata(arquivo) else { return false };
     let idade = md.modified().ok().and_then(|m| SystemTime::now().duration_since(m).ok());
     if idade.is_none_or(|d| d < limiar) {
@@ -81,7 +74,9 @@ fn orfa_apos(arquivo: &Path, limiar: Duration) -> bool {
     }
     // Velha. Só é órfã se o dono não estiver mais vivo.
     match std::fs::read_to_string(arquivo).ok().and_then(|s| s.trim().parse::<u32>().ok()) {
-        Some(pid) => !vivo(pid),
+        // Só isso separa "alguém está trabalhando" de "alguém morreu segurando a trava": sem a
+        // checagem, um `kill -9` no momento errado travaria o projeto até apagarem o arquivo.
+        Some(pid) => !proc.vivo(pid),
         None => true, // sem pid legível: velha e anônima, pode ir
     }
 }
@@ -239,6 +234,22 @@ mod tests {
         });
         assert!(ok.is_ok(), "devia ter quebrado a trava órfã: {ok:?}");
         assert_eq!(std::fs::read_to_string(&alvo).unwrap(), "passou\n");
+        let _ = std::fs::remove_dir_all(alvo.parent().unwrap());
+    }
+
+    /// A decisão de "órfã" é do seam `Processos`: dono que ele diz morto = órfã; vivo = não.
+    /// Com um falso injetado, sem depender de pid real.
+    #[test]
+    fn orfandade_vem_do_seam_processos() {
+        use crate::processos_falso::Falso;
+        let alvo = scratch("falso");
+        let lock = arquivo_de_trava(&alvo);
+        std::fs::write(&lock, "777").unwrap();
+        let morto = Falso::default();
+        assert!(orfa_apos_com(&morto, &lock, Duration::ZERO), "o seam diz morto");
+        assert_eq!(morto.feitas(), ["vivo:777"]);
+        let vivo = Falso { vivos: vec![777], ..Falso::default() };
+        assert!(!orfa_apos_com(&vivo, &lock, Duration::ZERO), "o seam diz vivo");
         let _ = std::fs::remove_dir_all(alvo.parent().unwrap());
     }
 

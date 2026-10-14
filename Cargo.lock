@@ -2012,10 +2012,15 @@ dependencies = [
  "png",
  "portable-pty",
  "rusqlite",
+ "schematize_plataforma",
  "serde",
  "serde_json",
  "toml",
 ]
+
+[[package]]
+name = "schematize_plataforma"
+version = "0.2.0"
 
 [[package]]
 name = "scoped-tls"

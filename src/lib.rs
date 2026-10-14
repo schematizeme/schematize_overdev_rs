@@ -17,8 +17,15 @@
 
 pub mod nucleo;
 
-/// Garante o gestor de atualizações (market) na máquina — o "parasita".
-pub mod market_parasita;
+/// A `Plataforma` e os `Hooks` do processo (ADR-0026), instalados por `cli::run`/`gui::run`.
+pub mod ambiente;
+/// A CLI: `cli::run(args, &Plataforma, &dyn Hooks) -> i32` (ADR-0026).
+pub mod cli;
+/// A janela (iced): `gui::run(args, &Plataforma, &dyn Hooks)`. Atrás da feature `gui`.
+#[cfg(feature = "gui")]
+pub mod gui;
+/// Hooks do Claude Code: como a plataforma escreve e reconhece o comando (ADR-0026).
+pub mod hooks;
 
 pub mod agentes;
 pub mod agentrun;
@@ -29,6 +36,8 @@ pub mod overdev;
 pub mod overdevdb;
 pub mod panel;
 pub mod paths;
+#[cfg(test)]
+mod processos_falso;
 pub mod projects;
 pub mod settings;
 pub mod usage;

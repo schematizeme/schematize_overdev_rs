@@ -15,7 +15,7 @@ use clap::{Parser, Subcommand};
 #[derive(Parser)]
 #[command(
     name = "schematize-overdev",
-    version = overdev_casa::nucleo::procedencia::rotulo_versao(),
+    version = crate::nucleo::procedencia::rotulo_versao(),
     about = "schematize overdev — the engine of a run: queue, lock, supervisor and gate",
     long_about = "Run, supervise and gate an overdev in a project.\n\
                   Works standalone; the schematize hub delegates its Overdev tab to it, and \

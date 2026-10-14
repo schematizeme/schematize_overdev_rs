@@ -10,6 +10,8 @@
 //! processos) — muda por razão de sistema operacional, não de produto.
 
 use super::*;
+use schematize_plataforma::bin::nomes_de_executavel_em;
+use schematize_plataforma::seams::terminal;
 
 /// `true` se o CLL `claude` está no `$PATH` (checagem barata pra a GUI/CLI
 /// decidirem entre disparar a sessão ou só imprimir a dica).
@@ -28,25 +30,8 @@ pub fn claude_path() -> Option<std::path::PathBuf> {
 /// `~/.profile`/`~/.bashrc`. Checar aqui (além do `$PATH`) é o que faz o app
 /// achar o `claude` mesmo quando foi aberto pelo menu de apps e não pelo terminal.
 pub(crate) fn fallback_bin_dirs() -> Vec<std::path::PathBuf> {
-    // `util::home()` e não `env HOME`: no Windows a variável é outra, e a resolução certa
-    // mora num lugar só (ver o doc de `util::home`).
     let h = crate::nucleo::util::home();
     let mut dirs = vec![h.join(".local/bin"), h.join(".claude/local"), h.join(".cargo/bin")];
-    #[cfg(windows)]
-    {
-        // O OpenSSH do Windows vem aqui desde o Windows 10 1803, e NÃO está no PATH de todo
-        // perfil — sem este fallback, o `vps exec` falha em máquina recém-instalada.
-        if let Some(sysroot) = std::env::var_os("SystemRoot") {
-            let sr = std::path::PathBuf::from(sysroot);
-            dirs.push(sr.join("System32").join("OpenSSH"));
-            dirs.push(sr.join("SysNative").join("OpenSSH"));
-        }
-        for pf in ["ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"] {
-            if let Some(d) = std::env::var_os(pf) {
-                dirs.push(std::path::PathBuf::from(d).join("OpenSSH"));
-            }
-        }
-    }
     dirs.push(std::path::PathBuf::from("/usr/local/bin"));
     dirs.push(std::path::PathBuf::from("/usr/bin"));
     dirs.push(std::path::PathBuf::from("/opt/homebrew/bin"));
@@ -64,7 +49,9 @@ pub(crate) fn resolve_bin(bin: &str) -> Option<std::path::PathBuf> {
         .into_iter()
         .chain(fallback_bin_dirs())
     {
-        for nome in nomes_de_executavel(bin) {
+        // A regra dos nomes (`ssh` → `ssh.exe`/`.cmd`/… no Windows) é da lib da plataforma; aqui
+        // só se escolhe o argumento pelo SO em que o binário está rodando.
+        for nome in nomes_de_executavel_em(bin, std::env::consts::OS == "windows") {
             let p = dir.join(&nome);
             if p.is_file() {
                 return Some(p);
@@ -72,41 +59,6 @@ pub(crate) fn resolve_bin(bin: &str) -> Option<std::path::PathBuf> {
         }
     }
     None
-}
-
-/// Nomes de arquivo que um executável `bin` pode ter neste sistema.
-///
-/// No Unix é só o nome. **No Windows o arquivo é `ssh.exe`**, e a versão anterior procurava
-/// `ssh` — nunca achava. Como todo `vps exec` passa por `resolve_bin("ssh")`, o gestor de VPS
-/// simplesmente não funcionava no Windows, que é uma das plataformas que o app publica
-/// (`selfupdate.rs` distribui `schematize-windows-x86_64.exe`).
-///
-/// A lista segue o `PATHEXT` padrão, na ordem em que o próprio Windows resolve.
-fn nomes_de_executavel(bin: &str) -> Vec<String> {
-    nomes_de_executavel_em(bin, cfg!(windows))
-}
-
-/// A REGRA de [`nomes_de_executavel`], com a plataforma como PARÂMETRO.
-///
-/// Existe separada porque a versão anterior era `#[cfg(windows)]`: no Linux o corpo nem
-/// compilava, então **nenhum teste podia exercitá-lo** — o mutation testing flagrou que
-/// desligar a correção do Windows não quebrava teste nenhum. Com a plataforma como argumento,
-/// a regra é verificável em qualquer máquina, e o `cfg!` só escolhe o argumento.
-///
-/// **Onde:** [`nomes_de_executavel`] em produção, e os testes com os dois valores.
-pub fn nomes_de_executavel_em(bin: &str, windows: bool) -> Vec<String> {
-    if !windows {
-        return vec![bin.to_string()];
-    }
-    // Já veio com extensão: respeita o que o chamador pediu.
-    if bin.contains('.') {
-        return vec![bin.to_string()];
-    }
-    let mut v = vec![bin.to_string()];
-    for ext in [".exe", ".cmd", ".bat", ".com"] {
-        v.push(format!("{bin}{ext}"));
-    }
-    v
 }
 
 /// `true` se `bin` existe no `$PATH` OU nos diretórios de fallback — checagem
@@ -240,72 +192,19 @@ pub(crate) fn purga_lancamentos_velhos(od: &Path) {
     }
 }
 
-/// Terminais aceitos, em ordem de preferência. Um só lugar: a lista estava duplicada aqui e
-/// no `selfupdate`, e listas duplicadas divergem.
-const TERMINAIS: [&str; 7] = [
-    "konsole",
-    "gnome-terminal",
-    "xfce4-terminal",
-    "x-terminal-emulator",
-    "alacritty",
-    "kitty",
-    "xterm",
-];
-
-/// Abre `script` no primeiro terminal disponível, desacoplado deste processo.
-///
-/// O quê: acha o terminal, monta os args (o `--` de gnome/xfce vs o `-e` dos outros) e
-/// spawna em grupo de processos próprio. Onde: [`launch_prompt_in_terminal`] e
-/// [`abrir_terminal_no_projeto`].
-/// **Saída:** o nome do terminal usado, ou erro se não houver nenhum.
-/// **Efeitos:** cria processo.
 /// Abre um COMANDO arbitrário num terminal do sistema, desacoplado deste processo.
 ///
 /// **Onde:** `vps::conexao::abrir_no_terminal` (o botão "Abrir no terminal" da GUI). Envolve
-/// o comando num script temporário porque é isso que [`spawn_no_terminal`] sabe lançar em
-/// todos os emuladores suportados — cada um tem sua própria forma de receber um comando, e o
-/// script normaliza a diferença.
+/// o comando num script temporário (`exec`: fechar a janela encerra a sessão) porque é isso que
+/// o seam `Terminal` sabe lançar em todos os emuladores suportados — cada um tem sua própria
+/// forma de receber um comando, e o script normaliza a diferença.
 pub fn abrir_comando_no_terminal(comando: &str) -> Result<String, String> {
     let dir = crate::nucleo::util::home_app_dir().join("run");
-    std::fs::create_dir_all(&dir)
-        .map_err(|e| format!("não consegui criar {}: {e}", dir.display()))?;
-    let script = dir.join(format!("term-{}.sh", std::process::id()));
-    // `exec` no fim: o shell do wrapper some e o terminal fica com o processo de verdade,
-    // então fechar a janela encerra a sessão em vez de deixar um ssh órfão.
-    std::fs::write(&script, format!("#!/bin/sh\nexec {comando}\n"))
-        .map_err(|e| format!("não consegui gravar {}: {e}", script.display()))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700));
-    }
-    spawn_no_terminal(&script)
-}
-
-pub(crate) fn spawn_no_terminal(script: &Path) -> Result<String, String> {
-    let term = TERMINAIS.iter().find(|t| binary_in_path(t)).ok_or_else(|| {
-        "nenhum terminal encontrado (konsole/gnome-terminal/xterm/…).".to_string()
-    })?;
-    let mut cmd = std::process::Command::new(term);
-    match *term {
-        // esses usam `--` pra separar o comando a executar
-        "gnome-terminal" | "xfce4-terminal" => {
-            cmd.arg("--").arg("bash").arg(script);
-        }
-        _ => {
-            cmd.arg("-e").arg("bash").arg(script);
-        }
-    }
-    cmd.stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        cmd.process_group(0); // desacopla do app: sobrevive se o app fechar
-    }
-    cmd.spawn().map_err(|e| format!("abrir terminal `{term}`: {e}"))?;
-    Ok((*term).to_string())
+    crate::nucleo::terminal::abrir_nomeado(&terminal::script_comando(
+        &dir,
+        std::process::id(),
+        comando,
+    ))
 }
 
 /// Abre um terminal INTERATIVO já dentro do projeto, com o `claude` pronto e o bypass de
@@ -339,26 +238,16 @@ pub fn abrir_terminal_no_projeto(project: &Path) -> Result<String, String> {
     purga_lancamentos_velhos(&od);
     let (_prompt, script) = arquivos_de_lancamento(&od);
 
-    // Absoluto quando existe; senão o wrapper avisa em vez de quebrar.
-    let linha_claude = match resolve_bin("claude") {
-        Some(c) => format!("if [ -x {c:?} ]; then\n  {c:?} --dangerously-skip-permissions\nfi\n"),
-        None => "echo '[schematize] o CLI `claude` nao esta no PATH — instale em claude.ai/code.'\necho '[schematize] abrindo so o shell neste projeto.'\n".to_string(),
-    };
-    // String de UMA linha com `\n` explicito: a continuacao com `\` do Rust preserva a
-    // indentacao do fonte e vazava espaco pra dentro do script gerado.
-    let sh = format!(
-        "#!/usr/bin/env bash\nexport PATH=\"$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.claude/local:$PATH\"\ncd {proj:?} || exit 1\n{linha_claude}echo\necho '[schematize] voce esta em {mostra} — o shell segue aberto.'\nexec \"${{SHELL:-/bin/bash}}\" -i\n",
-        proj = project,
-        mostra = project.display(),
-    );
-    std::fs::write(&script, &sh).map_err(|e| format!("gravar wrapper: {e}"))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755));
-    }
-    spawn_no_terminal(&script)
+    // Absoluto quando existe; senão o wrapper avisa em vez de quebrar. O corpo do script é do
+    // seam (`terminal::corpo_projeto_interativo`) e sai byte a byte como antes.
+    let corpo = terminal::corpo_projeto_interativo(project, resolve_bin("claude").as_deref());
+    crate::nucleo::terminal::abrir_nomeado(&terminal::script_arquivo(
+        script,
+        corpo,
+        terminal::Emuladores::Casa,
+    ))
 }
+
 /// Igual à [`launch_in_terminal`], mas dispara um PROMPT ARBITRÁRIO (linguagem natural) num
 /// terminal externo — reusada pelo (re)index ([`reindex_prompt`]) e por qualquer ação one-shot
 /// que a GUI/CLI queira delegar ao `claude` fora do processo do app. Escreve o prompt num arquivo
@@ -377,22 +266,15 @@ pub fn launch_prompt_in_terminal(project: &Path, prompt: &str) -> Result<String,
     purga_lancamentos_velhos(&od);
     let (promptfile, script) = arquivos_de_lancamento(&od);
     std::fs::write(&promptfile, prompt).map_err(|e| format!("gravar prompt: {e}"))?;
-    // O terminal roda `bash run.sh` (non-login): NÃO lê ~/.bashrc, então reforçamos o PATH com os
-    // dirs de usuário (o próprio claude, node e ripgrep resolvem daqui) e chamamos o claude pelo
-    // caminho ABSOLUTO — assim funciona mesmo com o app aberto pelo lançador do desktop.
-    let sh = format!(
-        "#!/usr/bin/env bash\nexport PATH=\"$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.claude/local:$PATH\"\ncd {proj:?} || exit 1\n{claude:?} --dangerously-skip-permissions --model {modelo} \"$(cat {pf:?})\"\necho\nread -rp '[overdev encerrado — Enter para fechar] '\n",
-        proj = project,
-        claude = claude,
-        pf = promptfile,
-    );
-    std::fs::write(&script, &sh).map_err(|e| format!("gravar wrapper: {e}"))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755));
-    }
-    spawn_no_terminal(&script)
+    // O terminal roda `bash run.sh` (non-login): NÃO lê ~/.bashrc, então o corpo (do seam
+    // `Terminal`) reforça o PATH com os dirs de usuário e chama o claude pelo caminho ABSOLUTO —
+    // assim funciona mesmo com o app aberto pelo lançador do desktop.
+    let corpo = terminal::corpo_claude_prompt(project, &claude, &modelo, &promptfile);
+    crate::nucleo::terminal::abrir_nomeado(&terminal::script_arquivo(
+        script,
+        corpo,
+        terminal::Emuladores::Casa,
+    ))
 }
 
 // ---------------------------------------------------------------------------

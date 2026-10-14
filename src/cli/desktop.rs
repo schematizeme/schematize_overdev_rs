@@ -6,7 +6,7 @@
 //! GRAVAR; esta camada sabe o que a pessoa pediu na linha de comando e o que responder. Um
 //! núcleo que lê flag seria um núcleo que não dá para chamar de outro lugar.
 
-use overdev_casa::nucleo::{bin, desktop};
+use crate::nucleo::{bin, desktop};
 
 /// **O quê:** executa `--install` ou `--remover`, e imprime o que aconteceu.
 ///

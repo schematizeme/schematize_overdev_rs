@@ -3,6 +3,7 @@
 //! AskUserQuestion) apontando pro próprio binário. Preserva o resto do settings.
 //! Onde: chamado por `schematize overdev enable|disable`.
 
+use crate::hooks::Hooks;
 use crate::nucleo::caminhos::settings_path;
 use serde_json::{json, Value};
 use std::fs;
@@ -61,7 +62,7 @@ fn ensure_group(root: &mut Value, event: &str, needle: &str, group: Value) {
 ///
 /// **Não é o comando, e a diferença é o bug que a E6 expôs.** A mesma string fazia dois
 /// trabalhos: identificar o grupo (busca por SUBSTRING) e ser o subcomando passado ao
-/// `hook_cmd` (comparação EXATA). Quando o comando mudou de forma — para procurar o
+/// `Hooks::comando` (comparação EXATA). Quando o comando mudou de forma — para procurar o
 /// `schematize-overdev` antes do hub —, a comparação passou a construir um alvo que ninguém
 /// escrevia, e o `hooks_atualizados` respondia sobre uma string inventada.
 ///
@@ -89,49 +90,11 @@ pub fn settings_valid() -> Option<bool> {
     }
 }
 
-/// Comando de hook RESILIENTE: resolve o `schematize` em RUNTIME (o `exe` de agora como 1ª pista,
-/// depois ~/.cargo/bin, /usr/local/bin, /usr/bin e o PATH) e roda `<sub>`. Se NÃO achar o binário,
-/// sai 0 (não bloqueia, não erra) — antes gravava um caminho absoluto que virava stale (ex.: o
-/// pacote saía e ficava `/usr/bin/schematize: not found` em todo Stop). "Prever macacos".
-fn hook_cmd(_exe: &str, sub: &str) -> String {
-    // NÃO embute o caminho de quem gerou o comando — nem o binário em execução.
-    //
-    // Embutir tornava o comando instável: gerado a partir de um `target/release/`, o hook
-    // ficava pinado no diretório de build; gerado de um binário temporário, ficava pinado nele
-    // para sempre. E a checagem de "está atualizado?" trocava de resposta conforme de onde o
-    // comando foi chamado, reescrevendo o settings à toa.
-    //
-    // ## Procura DOIS binários, e a ordem é a do dono
-    //
-    // Depois da E6, quem responde `check`/`guard` é o `schematize-overdev`. Mas o `schematize`
-    // continua respondendo `overdev check` — ele delega. O hook tenta o dono primeiro e o hub
-    // como rede, e assim ele funciona:
-    //
-    // - com os dois instalados (o normal);
-    // - só com o hub (quem ainda não instalou o app novo);
-    // - só com o app novo (quem instalou só ele).
-    //
-    // **Sem nenhum dos dois, AVISA e sai 0.** Antes saía 0 mudo, e o guard ficava desligado
-    // sem ninguém saber. Agora vai UMA linha no stderr (POSIX `printf`, aspas simples, sem
-    // quebra de linha — segura para JSON e para `sh -c`) com o comando de instalação, que deve
-    // ficar igual ao do hub (`schematize_cli_rs/src/instalardica.rs`). O repo ainda não é
-    // público, então o `cargo install --git` só funciona para quem tem acesso. Um hook `PreToolUse` que sai não-zero bloqueia TODA
-    // chamada de ferramenta da sessão — e bloquear a sessão de alguém porque um binário não
-    // está instalado é o pior desfecho possível deste arquivo.
-    //
-    // `overflow` está na lista porque houve um interregno curto em que o app se chamou assim;
-    // quem gravou hook naquela janela ficou com o nome antigo, e a auto-cura regrava o
-    // canônico na primeira oportunidade.
-    format!(
-        r#"for c in "$HOME/.cargo/bin/schematize-overdev" "$HOME/.local/bin/schematize-overdev" /usr/local/bin/schematize-overdev /usr/bin/schematize-overdev "$(command -v schematize-overdev 2>/dev/null)"; do [ -n "$c" ] && [ -x "$c" ] && exec "$c" {sub}; done; for c in "$HOME/.cargo/bin/schematize" "$HOME/.local/bin/schematize" /usr/local/bin/schematize /usr/bin/schematize "$HOME/.cargo/bin/overflow" "$HOME/.local/bin/overflow" /usr/local/bin/overflow /usr/bin/overflow "$(command -v schematize 2>/dev/null)"; do [ -n "$c" ] && [ -x "$c" ] && exec "$c" overdev {sub}; done; printf '%s\n' 'schematize-overdev: o hook do overdev esta instalado mas nenhum binario overdev foi encontrado - o guard esta DESLIGADO. Instale: cargo install --git https://github.com/schematizeme/schematize_overdev_rs --locked' >&2; exit 0"#
-    )
-}
-
 /// Liga os dois hooks do overdev. O comando resolve o binário em runtime (resiliente a mudança de
 /// caminho / pacote removido), com `exe` (o binário atual) como primeira pista.
-pub fn enable(exe: &str) -> Result<(), String> {
+pub fn enable(h: &dyn Hooks) -> Result<(), String> {
     let mut root = load();
-    aplica_hooks(&mut root, exe);
+    aplica_hooks(&mut root, h);
     save(&root)
 }
 
@@ -139,12 +102,12 @@ pub fn enable(exe: &str) -> Result<(), String> {
 ///
 /// **Onde:** `enable` (sobre o settings real) e os testes de reconhecimento/idempotência
 /// (sobre um JSON de bancada, sem tocar o `~/.claude/settings.json`).
-fn aplica_hooks(root: &mut Value, exe: &str) {
+fn aplica_hooks(root: &mut Value, h: &dyn Hooks) {
     if !root.is_object() {
         *root = json!({});
     }
-    let stop_cmd = hook_cmd(exe, "check");
-    let guard_cmd = hook_cmd(exe, "guard");
+    let stop_cmd = h.comando("check");
+    let guard_cmd = h.comando("guard");
     ensure_group(
         root,
         "Stop",
@@ -168,12 +131,12 @@ fn aplica_hooks(root: &mut Value, exe: &str) {
 ///
 /// O matcher é `"*"` porque a checagem de chave privada precisa ver o input de qualquer tool
 /// (um `Write` com a chave no conteúdo vaza igual a um `Bash`).
-pub fn enable_vps(exe: &str) -> Result<(), String> {
+pub fn enable_vps(h: &dyn Hooks) -> Result<(), String> {
     let mut root = load();
     if !root.is_object() {
         root = json!({});
     }
-    let cmd = hook_cmd(exe, "vps guard");
+    let cmd = h.comando("vps guard");
     ensure_group(
         &mut root,
         "PreToolUse",
@@ -271,16 +234,16 @@ pub fn vps_hook_enabled() -> bool {
 /// install do fonte removeu, deixando `not found` em todo Stop. O `enable` já grava o
 /// resolvedor resiliente, mas ninguém re-roda `enable` ao atualizar o app: o comando
 /// velho fica lá pra sempre.
-pub fn hooks_atualizados(exe: &str) -> bool {
-    hooks_atualizados_em(&load(), exe)
+pub fn hooks_atualizados(h: &dyn Hooks) -> bool {
+    hooks_atualizados_em(&load(), h)
 }
 
 /// **O quê:** `hooks_atualizados` sobre um JSON dado (comparação EXATA com o comando atual).
 ///
 /// **Onde:** `hooks_atualizados` e os testes.
-fn hooks_atualizados_em(root: &Value, exe: &str) -> bool {
+fn hooks_atualizados_em(root: &Value, h: &dyn Hooks) -> bool {
     MARCAS.iter().all(|(event, _marca, sub)| {
-        let alvo = hook_cmd(exe, sub);
+        let alvo = h.comando(sub);
         root.get("hooks").and_then(|h| h.get(event)).and_then(|a| a.as_array()).is_some_and(|arr| {
             arr.iter().any(|g| {
                 g.get("hooks").and_then(|h| h.as_array()).is_some_and(|hs| {
@@ -298,11 +261,11 @@ fn hooks_atualizados_em(root: &Value, exe: &str) -> bool {
 /// versão no `settings.json`, e atualizar o app não mexia nisso. Chamado de onde roda
 /// com frequência (o agente) e do `doctor`. Devolve `true` se regravou.
 /// Não liga hook em quem não pediu: overdev desligado → não faz nada.
-pub fn refresh_hooks(exe: &str) -> Result<bool, String> {
-    if !overdev_enabled() || hooks_atualizados(exe) {
+pub fn refresh_hooks(h: &dyn Hooks) -> Result<bool, String> {
+    if !overdev_enabled() || hooks_atualizados(h) {
         return Ok(false);
     }
-    enable(exe)?;
+    enable(h)?;
     Ok(true)
 }
 
@@ -355,7 +318,10 @@ fn caminhos_citados(cmd: &str) -> Vec<PathBuf> {
 /// `schematize overdev check`, resolvido pelo PATH) não é julgado — não dá pra saber
 /// sem executar, e na dúvida não se mexe.
 /// **Efeitos:** lê o disco (só `exists`), não escreve.
-fn comando_quebrado(cmd: &str) -> bool {
+fn comando_quebrado(h: &dyn Hooks, cmd: &str) -> bool {
+    if !h.reconhece(cmd) {
+        return false;
+    }
     let caminhos = caminhos_citados(cmd);
     if caminhos.is_empty() {
         return false;
@@ -371,7 +337,7 @@ fn comando_quebrado(cmd: &str) -> bool {
 /// Regrava o comando quando ele está quebrado (aponta só pra caminho inexistente) OU
 /// quando é o comando de uma versão anterior. Devolve `Ok(true)` se mexeu no arquivo.
 /// Arquivo que não existe / não é JSON: não faz nada (não inventa settings pra ninguém).
-pub fn repara_hooks_em(arquivo: &Path, exe: &str) -> Result<bool, String> {
+pub fn repara_hooks_em(hooks: &dyn Hooks, arquivo: &Path) -> Result<bool, String> {
     let Ok(texto) = fs::read_to_string(arquivo) else {
         return Ok(false);
     };
@@ -380,7 +346,7 @@ pub fn repara_hooks_em(arquivo: &Path, exe: &str) -> Result<bool, String> {
     };
     let mut mexeu = false;
     for (event, _marca, sub) in MARCAS {
-        let alvo = hook_cmd(exe, sub);
+        let alvo = hooks.comando(sub);
         let Some(arr) =
             root.get_mut("hooks").and_then(|h| h.get_mut(event)).and_then(|a| a.as_array_mut())
         else {
@@ -397,7 +363,7 @@ pub fn repara_hooks_em(arquivo: &Path, exe: &str) -> Result<bool, String> {
                 // Só mexemos em hook DO OVERDEV: ou cita o subcomando, ou é o script
                 // legado da skill. Hook de terceiro no mesmo settings.json não é nosso.
                 let nosso = cmd.contains(sub) || cmd.contains("overdev-stop.sh");
-                if !nosso || cmd == alvo || !comando_quebrado(cmd) {
+                if !nosso || cmd == alvo || !comando_quebrado(hooks, cmd) {
                     continue;
                 }
                 h["command"] = json!(alvo);
@@ -440,6 +406,10 @@ pub fn disable() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hooks::{Hooks, HooksUnix};
+
+    /// Os hooks Unix, a implementação sob teste.
+    const H: &HooksUnix = &HooksUnix;
 
     /// REGRESSÃO: hook gravado por uma versão ANTIGA continua no settings.json depois
     /// do update. Foi o caso real de uma máquina já na versão mais nova recebendo
@@ -465,7 +435,7 @@ mod tests {
             "o hook velho ainda casa como 'ligado' — por isso o enable pulava"
         );
         // Mas NÃO é o comando desta versão: é isso que passa a ser detectado.
-        let alvo = hook_cmd("/home/x/.cargo/bin/schematize", "overdev check");
+        let alvo = H.comando("overdev check");
         assert_ne!(alvo, "/usr/bin/schematize overdev check");
         assert!(alvo.contains("command -v schematize"), "o comando atual resolve em runtime");
     }
@@ -475,10 +445,10 @@ mod tests {
     #[test]
     fn reconhece_hook_quebrado_e_poupa_o_legitimo() {
         // 1) caminho do pacote .deb, removido pelo install do fonte (Mint)
-        assert!(comando_quebrado("/usr/bin/schematize overdev check"));
+        assert!(comando_quebrado(H, "/usr/bin/schematize overdev check"));
         // 2) caminho RELATIVO do hook shell legado (a máquina do 3º relato):
         //    só resolveria se o Claude Code rodasse exatamente naquela pasta.
-        assert!(comando_quebrado("bash .claude/hooks/overdev-stop.sh"));
+        assert!(comando_quebrado(H, "bash .claude/hooks/overdev-stop.sh"));
         // 2b) O MESMO relativo, agora com o arquivo EXISTINDO no cwd do teste. É o
         //     caso real que escapava: o `.exists()` da versão anterior dizia "são"
         //     e o reparo ia embora, enquanto o Claude Code — rodando de outra pasta —
@@ -493,21 +463,21 @@ mod tests {
             "o teste precisa do arquivo existindo pra provar que existência não salva o relativo"
         );
         assert!(
-            comando_quebrado("bash .claude/hooks/sz-teste-relativo.sh"),
+            comando_quebrado(H, "bash .claude/hooks/sz-teste-relativo.sh"),
             "caminho relativo é quebrado mesmo existindo no cwd do processo"
         );
         let _ = fs::remove_file(&script);
         // 3) caminho absoluto de uma skill que não está instalada
-        assert!(comando_quebrado("bash /nao/existe/overdev-stop.sh"));
+        assert!(comando_quebrado(H, "bash /nao/existe/overdev-stop.sh"));
 
         // LEGÍTIMO: um caminho que existe → não se mexe (quem usa o fallback shell
         // de propósito continua com o dele).
         let existente = format!("bash {}", std::env::current_exe().unwrap().display());
-        assert!(!comando_quebrado(&existente));
+        assert!(!comando_quebrado(H, &existente));
 
         // Sem caminho nenhum (resolvido pelo PATH): não dá pra julgar sem executar,
         // e na dúvida não se mexe.
-        assert!(!comando_quebrado("schematize overdev check"));
+        assert!(!comando_quebrado(H, "schematize overdev check"));
     }
 
     /// Repara o settings do PROJETO — era onde estava o hook relativo quebrado, e
@@ -529,7 +499,7 @@ mod tests {
         )
         .unwrap();
 
-        let mexeu = repara_hooks_em(&arq, "/home/x/.cargo/bin/schematize").unwrap();
+        let mexeu = repara_hooks_em(H, &arq).unwrap();
         assert!(mexeu, "hook quebrado no projeto tinha de ser regravado");
         let novo: Value = serde_json::from_str(&std::fs::read_to_string(&arq).unwrap()).unwrap();
         let cmd = novo["hooks"]["Stop"][0]["hooks"][0]["command"].as_str().unwrap();
@@ -537,7 +507,7 @@ mod tests {
         assert!(cmd.ends_with("exit 0"), "e nunca derruba a parada: {cmd}");
 
         // Rodar de novo é no-op (não fica reescrevendo arquivo de ninguém à toa).
-        assert!(!repara_hooks_em(&arq, "/home/x/.cargo/bin/schematize").unwrap());
+        assert!(!repara_hooks_em(H, &arq).unwrap());
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -558,7 +528,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(!repara_hooks_em(&arq, "/bin/schematize").unwrap(), "não é hook do overdev");
+        assert!(!repara_hooks_em(H, &arq).unwrap(), "não é hook do overdev");
         let depois: Value = serde_json::from_str(&std::fs::read_to_string(&arq).unwrap()).unwrap();
         assert_eq!(depois["hooks"]["Stop"][0]["hooks"][0]["command"].as_str().unwrap(), alheio);
         let _ = std::fs::remove_dir_all(&base);
@@ -569,7 +539,7 @@ mod tests {
     /// nenhum (hook que não bloqueia é melhor que hook que quebra toda parada).
     #[test]
     fn comando_do_hook_tenta_todos_os_caminhos_e_nunca_falha() {
-        let c = hook_cmd("/opt/schematize", "overdev check");
+        let c = H.comando("overdev check");
         for esperado in [
             "$HOME/.cargo/bin/schematize",
             "$HOME/.local/bin/schematize",
@@ -584,8 +554,8 @@ mod tests {
         // É isso que impede o hook de ficar pinado num diretório de build ou num binário
         // temporário, e que faz "está atualizado?" ter sempre a mesma resposta.
         assert!(!c.contains("/opt/schematize"), "não embute o caminho de quem gerou: {c}");
-        assert_eq!(c, hook_cmd("/home/alguem/.cargo/bin/schematize", "overdev check"));
-        assert_eq!(c, hook_cmd("/usr/bin/schematize", "overdev check"));
+        assert_eq!(c, H.comando("overdev check"));
+        assert_eq!(c, H.comando("overdev check"));
     }
 
     /// O comando que a versão ANTERIOR gravava (termina em `exit 0` mudo). Congelado aqui
@@ -640,7 +610,7 @@ mod tests {
             assert!(!Path::new(p).exists(), "{p} existe: o teste não isola o ramo sem-binário");
         }
         for sub in ["check", "guard"] {
-            let (rc, out, err) = roda_sh(&hook_cmd("x", sub), &vazio, &home);
+            let (rc, out, err) = roda_sh(&H.comando(sub), &vazio, &home);
             assert_eq!(rc, 0, "nunca bloqueia: {err}");
             assert_eq!(out, "", "stdout limpo");
             assert_eq!(err.lines().count(), 1, "UMA linha: {err:?}");
@@ -664,7 +634,7 @@ mod tests {
         let fake = bin.join("schematize-overdev");
         std::fs::write(&fake, "#!/bin/sh\necho \"ran $1\"\n").unwrap();
         std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let (rc, out, err) = roda_sh(&hook_cmd("x", "check"), &base.join("nada"), &home);
+        let (rc, out, err) = roda_sh(&H.comando("check"), &base.join("nada"), &home);
         assert_eq!((rc, out.as_str(), err.as_str()), (0, "ran check\n", ""));
         let _ = std::fs::remove_dir_all(&base);
     }
@@ -672,7 +642,7 @@ mod tests {
     /// Uma linha, sem quebra de linha, e o JSON round-tripa (seguro para o settings.json).
     #[test]
     fn comando_e_uma_linha_e_json_seguro() {
-        let c = hook_cmd("x", "check");
+        let c = H.comando("check");
         assert!(!c.contains('\n'), "uma linha só");
         let v = json!({ "command": c });
         let volta: Value = serde_json::from_str(&v.to_string()).unwrap();
@@ -683,7 +653,7 @@ mod tests {
     /// detectado como desatualizado, migrado para o novo SEM duplicar, e depois é idempotente.
     #[test]
     fn hook_antigo_e_novo_sao_reconhecidos_sem_duplicar() {
-        let novo_check = hook_cmd("x", "check");
+        let novo_check = H.comando("check");
         assert_ne!(novo_check, HOOK_ANTIGO_CHECK, "a string mudou");
         for c in [HOOK_ANTIGO_CHECK, novo_check.as_str()] {
             let g = json!({ "hooks": [ { "type": "command", "command": c } ] });
@@ -695,18 +665,18 @@ mod tests {
                 { "hooks": [ { "type": "command", "command": HOOK_ANTIGO_CHECK } ] }
             ]
         } });
-        assert!(!hooks_atualizados_em(&root, "x"), "o antigo está desatualizado");
-        aplica_hooks(&mut root, "x");
-        assert!(hooks_atualizados_em(&root, "x"), "migrou para o novo");
+        assert!(!hooks_atualizados_em(&root, H), "o antigo está desatualizado");
+        aplica_hooks(&mut root, H);
+        assert!(hooks_atualizados_em(&root, H), "migrou para o novo");
         let stop = root["hooks"]["Stop"].as_array().unwrap();
         let nossos = stop.iter().filter(|g| group_has(g, MARCAS[0].1)).count();
         assert_eq!(nossos, 1, "sem duplicar: {stop:?}");
         assert!(stop.iter().any(|g| group_has(g, "/alheio.sh")), "hook alheio preservado");
         // Idempotente: reaplicar não muda nada.
         let antes = root.clone();
-        aplica_hooks(&mut root, "x");
+        aplica_hooks(&mut root, H);
         assert_eq!(root, antes);
-        assert!(hooks_atualizados_em(&root, "x"));
+        assert!(hooks_atualizados_em(&root, H));
     }
 
     /// O reparo por arquivo (`check`) não reescreve nem duplica o hook novo, e deixa o
@@ -715,14 +685,14 @@ mod tests {
     fn reparo_por_arquivo_nao_mexe_no_novo() {
         let base = bancada("reparo");
         let arq = base.join("settings.json");
-        let novo = hook_cmd("x", "check");
+        let novo = H.comando("check");
         std::fs::write(
             &arq,
             json!({ "hooks": { "Stop": [ { "hooks": [ { "type": "command", "command": novo } ] } ] } })
                 .to_string(),
         )
         .unwrap();
-        assert!(!repara_hooks_em(&arq, "x").unwrap(), "o novo é o alvo: no-op");
+        assert!(!repara_hooks_em(H, &arq).unwrap(), "o novo é o alvo: no-op");
         let _ = std::fs::remove_dir_all(&base);
     }
 

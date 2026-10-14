@@ -1,7 +1,8 @@
 //! Integração com o ambiente gráfico: ícone e entrada no menu de aplicativos.
 //!
-//! **O quê:** grava o `.desktop` e instala os ícones, para o app **aparecer na lista de
-//! programas** e abrir sozinho — sem passar pelo hub.
+//! **O quê:** descreve o atalho do app (`EntradaAtalho`) e o entrega ao seam `Atalhos` da
+//! plataforma, que grava o `.desktop` e os ícones (o app só DESENHA o ícone), para o app
+//! **aparecer na lista de programas** e abrir sozinho — sem passar pelo hub.
 //!
 //! **Onde:** `schematize-overdev desktop --install` / `--remover`, e o `schematize-market`
 //! depois de instalar o app.
@@ -29,6 +30,9 @@
 
 use std::path::{Path, PathBuf};
 
+use schematize_plataforma::seams::atalhos_render::resolver_gui_irma;
+use schematize_plataforma::seams::EntradaAtalho;
+
 /// Nome do arquivo `.desktop`. Um lugar só: se divergir do ícone, o menu mostra um quadrado
 /// cinza e ninguém liga a causa ao nome.
 pub const ID: &str = "schematize-overdev";
@@ -41,58 +45,59 @@ pub const GUI_BIN: &str = "schematize-overdev-gui";
 /// **Onde:** [`instalar`], para decidir entre as duas formas do `.desktop`.
 ///
 /// **Ao lado do próprio binário PRIMEIRO:** é onde o instalador põe o par, e é o par que se
-/// atualiza junto. Só depois `~/.cargo/bin` e o `$PATH`, que podem ter cópia velha.
+/// atualiza junto (regra do seam, `resolver_gui_irma`). Só depois `~/.cargo/bin` e o `$PATH`,
+/// que podem ter cópia velha.
 pub fn resolver_gui(bin_proprio: &Path) -> Option<PathBuf> {
-    let nomes: &[&str] =
-        if cfg!(windows) { &["schematize-overdev-gui.exe", GUI_BIN] } else { &[GUI_BIN] };
-    if let Some(dir) = bin_proprio.parent() {
-        for n in nomes {
-            let c = dir.join(n);
-            if c.is_file() {
-                return Some(c);
-            }
-        }
+    resolver_gui_irma(bin_proprio, GUI_BIN).or_else(|| super::bin::resolve_bin(GUI_BIN))
+}
+
+/// **O quê:** a entrada de atalho do Overdev: textos, categorias, `bin`/`gui` e os `icones`
+/// (PNG por tamanho) dados.
+///
+/// **Onde:** [`instalar_com_gui`], [`remover`] e os testes de render. Os valores são os que o
+/// `.desktop` do app sempre teve (travados por `tests/snapshot_f4b.rs`).
+///
+/// **`Exec` ABSOLUTO nas duas formas** (a janela, ou a CLI com `status` em terminal), pela razão
+/// do módulo `bin`; **o ícone é obrigatório** (falha ao gravá-lo é erro, não aviso).
+pub fn entrada(
+    home: &Path,
+    bin: &Path,
+    gui: Option<&Path>,
+    icones: Vec<(u32, Vec<u8>)>,
+) -> EntradaAtalho {
+    let lista = |t: &[&str]| t.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    EntradaAtalho {
+        home: home.to_path_buf(),
+        id: ID.into(),
+        nome: "schematize Overdev".into(),
+        generico: Some("Run, checklist, perguntas".into()),
+        comentario: Some("O progresso do run, o checklist e as perguntas que esperam você".into()),
+        bin: Some(bin.to_path_buf()),
+        // A CLI recebe `status`, que IMPRIME a resposta que esta tela existe para dar — em que pé
+        // está o run. O binário puro imprimiria o help do clap e sairia.
+        args_sem_gui: "status".into(),
+        gui: gui.map(Path::to_path_buf),
+        categorias: lista(&["Development", "Utility"]),
+        palavras_chave: lista(&[
+            "skill", "skills", "catalogo", "catalog", "claude", "agente", "agent", "fork",
+        ]),
+        startup_notify: Some(false),
+        startup_wm_class: Some(GUI_BIN.into()),
+        icone_nome: super::icone::NOME.into(),
+        icones,
+        icone_extras: true,
+        icone_obrigatorio: true,
+        cache_icones: false,
+        legados: vec![],
     }
-    super::bin::resolve_bin(GUI_BIN)
 }
 
-/// **O quê:** o conteúdo do `.desktop`, exatamente como vai para o disco.
-///
-/// **Onde:** [`instalar_com_gui`] e os testes. Função PURA — as duas formas são afirmáveis sem
-/// escrever em `~/.local/share` e sem ter janela nenhuma instalada.
-///
-/// **`Exec` com caminho ABSOLUTO nas duas formas**, pela razão do módulo `bin`.
-pub fn render(bin: &Path, icone: &Path, gui: Option<&Path>) -> String {
-    // A janela não recebe subcomando: ela é uma janela, e fica aberta porque tem event loop.
-    // A CLI recebe `status`, que IMPRIME a resposta que esta tela existe para dar — em que pé
-    // está o run. O binário puro imprimiria o help do clap e sairia.
-    let (exec, terminal) = match gui {
-        Some(g) => (format!("{}", g.display()), "false"),
-        None => (format!("{} status", bin.display()), "true"),
-    };
-    format!(
-        "[Desktop Entry]\n\
-         Type=Application\n\
-         Name=schematize Overdev\n\
-         GenericName=Run, checklist, perguntas\n\
-         Comment=O progresso do run, o checklist e as perguntas que esperam você\n\
-         Exec={exec}\n\
-         Icon={}\n\
-         Terminal={terminal}\n\
-         Categories=Development;Utility;\n\
-         Keywords=skill;skills;catalogo;catalog;claude;agente;agent;fork;\n\
-         StartupNotify=false\n\
-         StartupWMClass={GUI_BIN}\n",
-        icone.display()
-    )
-}
-
-/// **O quê:** onde os `.desktop` do usuário moram.
+/// **O quê:** onde os `.desktop` do usuário moram (layout freedesktop, para exibir ao usuário).
 pub fn dir_apps(home: &Path) -> PathBuf {
     home.join(".local/share/applications")
 }
 
-/// **O quê:** o caminho do `.desktop` deste app.
+/// **O quê:** o caminho do `.desktop` deste app (para exibir e checar se existe).
 pub fn arquivo_desktop(home: &Path) -> PathBuf {
     dir_apps(home).join(format!("{ID}.desktop"))
 }
@@ -114,39 +119,38 @@ pub fn instalar(home: &Path, bin: &Path) -> Result<PathBuf, String> {
 /// do que está instalado na máquina de quem roda a suíte. Teste que muda de resultado com o
 /// ambiente não prova nem uma coisa nem outra.
 pub fn instalar_com_gui(home: &Path, bin: &Path, gui: Option<&Path>) -> Result<PathBuf, String> {
-    // O ícone primeiro: um `.desktop` apontando para ícone inexistente vira quadrado cinza, e
-    // a pessoa conclui que o app não instalou direito.
-    let icone =
-        super::icone::install_all(home).map_err(|e| format!("não consegui gerar o ícone: {e}"))?;
-    let dir = dir_apps(home);
-    std::fs::create_dir_all(&dir)
-        .map_err(|e| format!("não consegui criar {}: {e}", dir.display()))?;
-    let p = arquivo_desktop(home);
-    std::fs::write(&p, render(bin, &icone, gui))
-        .map_err(|e| format!("não consegui gravar {}: {e}", p.display()))?;
-    // Best-effort: alguns ambientes só releem o menu depois disto. Falhar aqui não invalida a
-    // instalação — no pior caso o ícone aparece no próximo login.
-    let _ = std::process::Command::new("update-desktop-database").arg(&dir).status();
-    Ok(p)
+    // O ícone primeiro (o seam grava os PNGs ANTES do `.desktop`): um `.desktop` apontando para
+    // ícone inexistente vira quadrado cinza, e a pessoa conclui que o app não instalou direito.
+    let icones =
+        super::icone::icones_hicolor().map_err(|e| format!("não consegui gerar o ícone: {e}"))?;
+    crate::ambiente::plat().atalhos.instalar(&entrada(home, bin, gui, icones))?;
+    Ok(arquivo_desktop(home))
 }
 
-/// **O quê:** remove o `.desktop` deste app. `true` se havia um.
+/// **O quê:** remove o atalho deste app. `true` se havia um.
 ///
 /// **Onde:** `schematize-overdev desktop --remover`. Os ícones ficam: são inertes, e apagá-los
 /// mexeria numa árvore (`hicolor`) compartilhada com outros apps.
 pub fn remover(home: &Path) -> Result<bool, String> {
-    let p = arquivo_desktop(home);
-    if !p.exists() {
+    let havia = arquivo_desktop(home).exists();
+    if !havia {
         return Ok(false);
     }
-    std::fs::remove_file(&p).map_err(|e| format!("não consegui remover {}: {e}", p.display()))?;
-    let _ = std::process::Command::new("update-desktop-database").arg(dir_apps(home)).status();
+    // O `bin` só valida a entrada; nada é executado na remoção.
+    crate::ambiente::plat().atalhos.remover(&entrada(home, Path::new(ID), None, Vec::new()))?;
     Ok(true)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use schematize_plataforma::seams::atalhos_render::render as render_seam;
+
+    /// O texto do `.desktop` que o seam geraria para estes caminhos (sem tocar o disco).
+    fn render(bin: &Path, icone: &Path, gui: Option<&Path>) -> String {
+        let e = entrada(Path::new("/h"), bin, gui, Vec::new());
+        render_seam(&e, &icone.display().to_string()).expect("render")
+    }
 
     /// A linha `Exec=` de um render, sem o prefixo.
     fn exec_de(t: &str) -> String {

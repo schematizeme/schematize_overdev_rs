@@ -1,11 +1,11 @@
 //! Subcomandos do OVERDEV: rodar, dividir em K agentes, snapshot/histórico/restore
 //! do DB local e o log de conclusões.
 
+use crate::agentrun;
+use crate::agentrun::AgentRunner;
 use crate::cli::args::Cmd;
 use crate::cli::prompt::confirm;
-use overdev_casa::agentrun;
-use overdev_casa::agentrun::AgentRunner;
-use overdev_casa::{overdev, overdevdb};
+use crate::{overdev, overdevdb};
 
 /// `schematize overdev run [--max N] [--yes]` — dispara o `claude` acoplado no
 /// diretório atual e monitora (auto-continue). Guardrail: mostra o comando do
@@ -14,7 +14,7 @@ use overdev_casa::{overdev, overdevdb};
 /// tudo dentro do teto seguro do governador (`schematize agents`).
 pub fn overdev_split(k: usize, dispatch: bool, force: bool) -> Result<(), String> {
     let project = std::env::current_dir().map_err(|e| format!("cwd inacessível: {e}"))?;
-    let b = overdev_casa::agents::budget();
+    let b = crate::agents::budget();
     let plan = b.split_plan(k);
 
     println!("Governador de concorrência (máquina inteira):");
@@ -224,64 +224,64 @@ pub fn overdev_agent_cmd(cmd: &str) -> Result<(), String> {
 pub fn executar(sub: Cmd) -> Result<(), String> {
     match sub {
 
-        Cmd::Enable => overdev_casa::settings::enable(&overdev_casa::nucleo::util::self_exe()),
-        Cmd::Disable => overdev_casa::settings::disable(),
-        Cmd::Start { objetivo, max } => overdev_casa::overdev::start(&objetivo.join(" "), max),
+        Cmd::Enable => crate::settings::enable(crate::ambiente::hooks()),
+        Cmd::Disable => crate::settings::disable(),
+        Cmd::Start { objetivo, max } => crate::overdev::start(&objetivo.join(" "), max),
         Cmd::Terminal { prompt, receita, json } => {
             crate::cli::grafo::terminal(prompt.as_deref(), receita.as_deref(), json)
         }
         Cmd::Supervise { max } => crate::cli::comandos::cwd_project().map(|projeto| {
-            let teto = max.unwrap_or(overdev_casa::overdev::supervisor::MAX_RELANCAMENTOS);
+            let teto = max.unwrap_or(crate::overdev::supervisor::MAX_RELANCAMENTOS);
             println!(
                 "Supervisionando {} — relanço o agente se ele morrer com item de máquina aberto (teto {teto}).",
                 projeto.display()
             );
-            let n = overdev_casa::overdev::supervisor::supervise(&projeto, teto);
+            let n = crate::overdev::supervisor::supervise(&projeto, teto);
             println!("supervisor encerrado após {n} relançamento(s).");
         }),
         Cmd::Split { k, dispatch, force } => crate::cli::comandos::overdev_split(k, dispatch, force),
         Cmd::Check => {
-            overdev_casa::overdev::check();
+            crate::overdev::check();
             Ok(())
         }
         Cmd::Guard => {
-            overdev_casa::overdev::guard();
+            crate::overdev::guard();
             Ok(())
         }
         Cmd::Agents { json, split } => agents_cmd(json, split),
         Cmd::Archive => {
             let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-            overdev_casa::archive::sync(&cwd).map(|msg| println!("{msg}"))
+            crate::archive::sync(&cwd).map(|msg| println!("{msg}"))
         }
-        Cmd::Panel => overdev_casa::panel::open(),
+        Cmd::Panel => crate::panel::open(),
         Cmd::Graph { sub } => match sub {
             crate::cli::args::GraphCmd::Json { servico } => {
                 crate::cli::grafo::grafo_json(servico.as_deref())
             }
             crate::cli::args::GraphCmd::Obsidian { out } => {
-                overdev_casa::panel::export_obsidian(out)
+                crate::panel::export_obsidian(out)
             }
         },
         Cmd::Desktop { install, remover } => crate::cli::desktop::executar(install, remover),
         Cmd::Progresso { json } => crate::cli::saidajson::progresso(json),
         Cmd::Hooks { repair, json } => crate::cli::saidajson::hooks(repair, json),
         Cmd::Status => {
-            overdev_casa::overdev::status();
+            crate::overdev::status();
             Ok(())
         }
-        Cmd::Hold { texto } => overdev_casa::overdev::hold(&texto.join(" ")),
-        Cmd::Park { item, pergunta } => overdev_casa::overdev::park(&item, &pergunta.join(" ")),
+        Cmd::Hold { texto } => crate::overdev::hold(&texto.join(" ")),
+        Cmd::Park { item, pergunta } => crate::overdev::park(&item, &pergunta.join(" ")),
         Cmd::Human { texto, done } => {
             let t = texto.join(" ");
             let sub = if t.trim().is_empty() { None } else { Some(t.as_str()) };
-            overdev_casa::overdev::human_done(sub, done)
+            crate::overdev::human_done(sub, done)
         }
-        Cmd::Note { texto, kind } => overdev_casa::overdev::note(&kind, &texto.join(" ")),
+        Cmd::Note { texto, kind } => crate::overdev::note(&kind, &texto.join(" ")),
         Cmd::Answer { alvo, texto } => {
-            overdev_casa::overdev::resolver(alvo_humano(&alvo), overdev_casa::overdev::resposta::Acao::Responder, &texto.join(" "))
+            crate::overdev::resolver(alvo_humano(&alvo), crate::overdev::resposta::Acao::Responder, &texto.join(" "))
         }
         Cmd::Refuse { alvo, texto } => {
-            overdev_casa::overdev::resolver(alvo_humano(&alvo), overdev_casa::overdev::resposta::Acao::Recusar, &texto.join(" "))
+            crate::overdev::resolver(alvo_humano(&alvo), crate::overdev::resposta::Acao::Recusar, &texto.join(" "))
         }
         Cmd::Ask { titulo, kind, opcoes, contexto, auto, linka } => crate::cli::perguntas::ask(
             &titulo.join(" "),
@@ -301,14 +301,14 @@ pub fn executar(sub: Cmd) -> Result<(), String> {
         Cmd::Delegar { papel, brief, brief_stdin, projeto, json, listar } => {
             crate::cli::delegar::executar(papel, brief, brief_stdin, projeto, json, listar)
         }
-        Cmd::Stop => overdev_casa::overdev::stop(),
+        Cmd::Stop => crate::overdev::stop(),
         Cmd::Run { max, yes } => overdev_run(max, yes),
         Cmd::Snapshot => overdev_snapshot(),
         Cmd::History { limit, json } => overdev_history(limit, json),
         Cmd::Checklist { json } => crate::cli::saidajson::checklist(json),
         Cmd::Restore { id } => overdev_restore(id),
-        Cmd::Load => overdev_agent_cmd(overdev_casa::overdev::load_cmd()),
-        Cmd::Index => overdev_agent_cmd(overdev_casa::overdev::index_cmd()),
+        Cmd::Load => overdev_agent_cmd(crate::overdev::load_cmd()),
+        Cmd::Index => overdev_agent_cmd(crate::overdev::index_cmd()),
         Cmd::Log => {
             overdev_log();
             Ok(())
@@ -324,8 +324,8 @@ pub fn executar(sub: Cmd) -> Result<(), String> {
 /// `schematize lang [code] [--list]`.
 /// `schematize agents` — imprime o orçamento de concorrência e persiste ~/.schematize/agents.json.
 pub fn agents_cmd(json: bool, split: Option<usize>) -> Result<(), String> {
-    let b = overdev_casa::agents::budget();
-    let _ = overdev_casa::agents::persist(&b); // best-effort: outros (Claude/overdev/GUI) leem daqui.
+    let b = crate::agents::budget();
+    let _ = crate::agents::persist(&b); // best-effort: outros (Claude/overdev/GUI) leem daqui.
 
     if json {
         let plan = split.map(|k| b.split_plan(k));
@@ -383,8 +383,8 @@ pub fn agents_cmd(json: bool, split: Option<usize>) -> Result<(), String> {
 ///
 /// **Veio do `main.rs` do hub** e é PURA, então ganhou teste ao mudar de casa — lá ela não
 /// tinha nenhum, porque estava no meio do despacho.
-fn alvo_humano(s: &str) -> overdev_casa::overdev::resposta::Alvo {
-    use overdev_casa::overdev::resposta::Alvo;
+fn alvo_humano(s: &str) -> crate::overdev::resposta::Alvo {
+    use crate::overdev::resposta::Alvo;
     match s.trim().parse::<usize>() {
         Ok(n) if n > 0 => Alvo::Indice(n),
         _ => Alvo::Texto(s.trim().to_string()),
@@ -394,7 +394,7 @@ fn alvo_humano(s: &str) -> overdev_casa::overdev::resposta::Alvo {
 #[cfg(test)]
 mod tests {
     use super::alvo_humano;
-    use overdev_casa::overdev::resposta::Alvo;
+    use crate::overdev::resposta::Alvo;
 
     /// **Número vira ÍNDICE e o resto vira TEXTO — e o zero não é índice.**
     ///

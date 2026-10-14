@@ -3,7 +3,7 @@
 //! O quê: start/check/guard/status/hold/ask/stop. check = Stop hook; guard = PreToolUse
 //! hook que VETA AskUserQuestion enquanto em overdev. Onde: chamado por main.
 
-use crate::nucleo::util::{self, self_exe};
+use crate::nucleo::util;
 use crate::settings;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -281,7 +281,7 @@ pub fn stop() -> Result<(), String> {
 
 /// Liga os hooks no settings.json (Stop + PreToolUse), apontando pro binário atual.
 pub fn enable() -> Result<(), String> {
-    settings::enable(&self_exe())?;
+    settings::enable(crate::ambiente::hooks())?;
     println!("overdev habilitado (hooks Stop + PreToolUse registrados). Inerte até `schematize overdev start`.");
     Ok(())
 }

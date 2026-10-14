@@ -2,7 +2,7 @@
 //!
 //! **O quê:** gera o PNG do app em qualquer tamanho, sem asset externo e sem rasterizador.
 //!
-//! **Onde:** [`super::desktop::instalar`], ao gravar a entrada no menu.
+//! **Onde:** [`super::desktop::instalar`], ao montar a entrada de menu (quem grava é o seam).
 //!
 //! ## Por que é cópia do gerador dos irmãos, com outra paleta E outra forma
 //!
@@ -59,7 +59,7 @@ const DEGRAU_R: f32 = 0.030;
 
 /// **O quê:** o ícone em RGBA no tamanho `n` (px). Devolve `(bytes, w, h)`. PURO e determinístico.
 ///
-/// **Onde:** [`write_png`], e os testes — que podem afirmar pixels sem tocar no disco.
+/// **Onde:** [`png_bytes`], e os testes — que podem afirmar pixels sem tocar no disco.
 pub fn rgba(n: u32) -> (Vec<u8>, u32, u32) {
     let nf = n as f32;
     let radius = nf * 0.227; // rx=232/1024, o mesmo squircle da casa
@@ -148,21 +148,21 @@ fn inside_rounded(px: f32, py: f32, n: f32, r: f32) -> bool {
     dx * dx + dy * dy <= r * r
 }
 
-/// **O quê:** escreve o ícone (tamanho `n`) como PNG em `path`, criando os diretórios-pai.
+/// **O quê:** o ícone (tamanho `n`) como bytes de um PNG RGBA 8 bits.
 ///
-/// **Onde:** [`write_hicolor`] e [`install_all`].
-pub fn write_png(path: &std::path::Path, n: u32) -> std::io::Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
+/// **Onde:** [`icones_hicolor`]. O encoder e os parâmetros são os de sempre (o `.png` instalado
+/// sai byte a byte igual ao de antes da ADR-0026 — travado por `tests/snapshot_f4b.rs`).
+pub fn png_bytes(n: u32) -> std::io::Result<Vec<u8>> {
     let (data, w, h) = rgba(n);
-    let file = std::fs::File::create(path)?;
-    let mut enc = png::Encoder::new(std::io::BufWriter::new(file), w, h);
-    enc.set_color(png::ColorType::Rgba);
-    enc.set_depth(png::BitDepth::Eight);
-    let mut writer = enc.write_header().map_err(std::io::Error::other)?;
-    writer.write_image_data(&data).map_err(std::io::Error::other)?;
-    Ok(())
+    let mut out = Vec::new();
+    {
+        let mut enc = png::Encoder::new(&mut out, w, h);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        let mut writer = enc.write_header().map_err(std::io::Error::other)?;
+        writer.write_image_data(&data).map_err(std::io::Error::other)?;
+    }
+    Ok(out)
 }
 
 /// Nome do arquivo de ícone. Um lugar só: se divergir do `Icon=` do `.desktop`, o menu mostra
@@ -172,39 +172,12 @@ pub const NOME: &str = "schematize-overdev";
 /// Tamanhos hicolor padrão (freedesktop).
 pub const HICOLOR_SIZES: [u32; 8] = [16, 24, 32, 48, 64, 128, 256, 512];
 
-/// **O quê:** gera a árvore hicolor completa em `base`. Devolve os caminhos escritos.
+/// **O quê:** os PNGs de todos os tamanhos hicolor, `(px, bytes)`, para a `EntradaAtalho`
+/// do seam `Atalhos` gravar. O app DESENHA o ícone (código, sem asset); instalar é da plataforma.
 ///
-/// **Onde:** [`install_all`].
-pub fn write_hicolor(base: &std::path::Path) -> std::io::Result<Vec<std::path::PathBuf>> {
-    let mut out = Vec::new();
-    for n in HICOLOR_SIZES {
-        let p = base.join(format!("{n}x{n}")).join("apps").join(format!("{NOME}.png"));
-        write_png(&p, n)?;
-        out.push(p);
-    }
-    Ok(out)
-}
-
-/// **O quê:** instala o ícone em todos os locais que os ambientes consultam, e devolve o
-/// caminho ABSOLUTO do 256px — o que vai no `Icon=`.
-///
-/// **Onde:** [`super::desktop::instalar_com_gui`].
-///
-/// **Absoluto no `Icon=` de propósito:** no Wayland o dock casa a janela ao `.desktop`, e um
-/// nome de tema depende de cache de ícones que pode estar velho ou quebrado. Os extras são
-/// best-effort — o hicolor é o que importa.
-pub fn install_all(home: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
-    let icons = home.join(".local/share/icons/hicolor");
-    write_hicolor(&icons)?;
-    let p256 = icons.join("256x256").join("apps").join(format!("{NOME}.png"));
-    for extra in [
-        home.join(format!(".local/share/pixmaps/{NOME}.png")),
-        home.join(format!(".icons/{NOME}.png")),
-        home.join(format!(".local/share/icons/{NOME}.png")),
-    ] {
-        let _ = write_png(&extra, 256);
-    }
-    Ok(p256)
+/// **Onde:** [`super::desktop::entrada`].
+pub fn icones_hicolor() -> std::io::Result<Vec<(u32, Vec<u8>)>> {
+    HICOLOR_SIZES.iter().map(|&n| png_bytes(n).map(|b| (n, b))).collect()
 }
 
 #[cfg(test)]

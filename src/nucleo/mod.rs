@@ -14,6 +14,6 @@ pub mod bin;
 pub mod caminhos;
 pub mod desktop;
 pub mod icone;
-
 pub mod procedencia;
+pub mod terminal;
 pub mod util;

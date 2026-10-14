@@ -20,12 +20,7 @@
 
 use std::path::{Path, PathBuf};
 
-/// Os terminais que a casa procura, na ordem em que os ambientes de desktop os trazem.
-///
-/// **A ordem é a da probabilidade**, e não a do gosto: achar um terminal instalado e não o
-/// preferido é melhor que não achar nenhum.
-const TERMINAIS: [&str; 7] =
-    ["konsole", "gnome-terminal", "xfce4-terminal", "alacritty", "kitty", "wezterm", "xterm"];
+use schematize_plataforma::seams::terminal;
 
 /// **O quê:** abre o `claude` num terminal, na raiz de `projeto`, com `prompt`.
 ///
@@ -41,27 +36,16 @@ pub fn abrir(projeto: &Path, prompt: &str) -> Result<String, String> {
     std::fs::create_dir_all(&dir).map_err(|e| format!("criar {}: {e}", dir.display()))?;
     let (pf, script) = arquivos(&dir);
     std::fs::write(&pf, prompt).map_err(|e| format!("gravar prompt: {e}"))?;
-    // O terminal roda `bash run.sh` NON-LOGIN: ele não lê o `~/.bashrc`. Sem reforçar o PATH e
-    // sem chamar o claude pelo caminho ABSOLUTO, o comando morre com "not found" num app que
-    // está instalado — e o erro chega como uma linha crua de bash.
-    let sh = format!(
-        "#!/usr/bin/env bash\n\
-         export PATH=\"$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.claude/local:$PATH\"\n\
-         cd {proj:?} || exit 1\n\
-         {claude:?} --dangerously-skip-permissions \"$(cat {pf:?})\"\n\
-         echo\n\
-         read -rp '[agente encerrado — Enter para fechar] '\n",
-        proj = projeto,
-        claude = claude,
-        pf = pf,
+    // O terminal roda `bash run.sh` NON-LOGIN: ele não lê o `~/.bashrc`. O corpo do seam
+    // (`terminal::corpo_agente`) reforça o PATH e chama o claude pelo caminho ABSOLUTO — sem isso
+    // o comando morre com "not found" num app que está instalado, e o erro chega como uma linha
+    // crua de bash.
+    let st = terminal::script_arquivo(
+        script,
+        terminal::corpo_agente(projeto, &claude, &pf),
+        terminal::Emuladores::Agente,
     );
-    std::fs::write(&script, &sh).map_err(|e| format!("gravar wrapper: {e}"))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755));
-    }
-    spawn(&script)
+    super::terminal::abrir_nomeado(&st)
 }
 
 /// **O quê:** os dois arquivos de um lançamento, com nome ÚNICO.
@@ -76,38 +60,6 @@ fn arquivos(dir: &Path) -> (PathBuf, PathBuf) {
     let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let id = format!("{}-{n}", std::process::id());
     (dir.join(format!("prompt-{id}.txt")), dir.join(format!("run-{id}.sh")))
-}
-
-/// **O quê:** abre o terminal rodando `script`. Devolve o nome do terminal.
-///
-/// **`process_group(0)` desacopla do app:** sem isso, fechar a janela que abriu o terminal
-/// mataria o agente no meio do trabalho.
-fn spawn(script: &Path) -> Result<String, String> {
-    let term = TERMINAIS
-        .iter()
-        .find(|t| super::bin::resolve_bin(t).is_some())
-        .ok_or_else(|| format!("nenhum terminal encontrado ({}).", TERMINAIS.join("/")))?;
-    let mut cmd = std::process::Command::new(term);
-    match *term {
-        // Estes usam `--` para separar o comando a executar; os outros usam `-e`. Errar o
-        // separador não dá erro: o terminal abre VAZIO, e a pessoa conclui que o app travou.
-        "gnome-terminal" | "xfce4-terminal" => {
-            cmd.arg("--").arg("bash").arg(script);
-        }
-        _ => {
-            cmd.arg("-e").arg("bash").arg(script);
-        }
-    }
-    cmd.stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        cmd.process_group(0);
-    }
-    cmd.spawn().map_err(|e| format!("abrir terminal `{term}`: {e}"))?;
-    Ok((*term).to_string())
 }
 
 #[cfg(test)]
@@ -127,12 +79,13 @@ mod tests {
         assert!(s1.to_string_lossy().ends_with(".sh"));
     }
 
-    /// O separador certo por terminal — errar não dá erro: o terminal abre VAZIO, e a pessoa
-    /// conclui que o app travou.
+    /// A lista de terminais do agente cobre os dois separadores (a lista mora no seam
+    /// `Terminal`): errar o separador não dá erro — o terminal abre VAZIO.
     #[test]
     fn a_lista_de_terminais_cobre_os_dois_separadores() {
-        assert!(TERMINAIS.contains(&"gnome-terminal"), "o do GNOME usa `--`");
-        assert!(TERMINAIS.contains(&"konsole"), "o do KDE usa `-e`");
-        assert!(TERMINAIS.contains(&"xterm"), "o último recurso tem de estar na lista");
+        let nomes = terminal::nomes(terminal::Emuladores::Agente);
+        assert!(nomes.contains(&"gnome-terminal"), "o do GNOME usa `--`");
+        assert!(nomes.contains(&"konsole"), "o do KDE usa `-e`");
+        assert!(nomes.contains(&"xterm"), "o último recurso tem de estar na lista");
     }
 }

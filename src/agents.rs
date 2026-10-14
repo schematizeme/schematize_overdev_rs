@@ -20,6 +20,8 @@
 
 use std::path::PathBuf;
 
+use schematize_plataforma::seams::processos::Processos;
+
 /// Núcleos deixados livres pro PC respirar (não viram agents). Calibrável: `SCHEMATIZE_AGENT_RESERVE`.
 pub const RESERVE: usize = 4;
 /// Piso: mesmo num PC fraco, ao menos isto (o dono exigiu > 1). `SCHEMATIZE_AGENT_FLOOR`.
@@ -130,13 +132,21 @@ pub struct SplitPlan {
 // Leitura do sistema (Linux-first; fallback seguro em outros SOs).
 // ---------------------------------------------------------------------------
 
-/// Tira uma leitura do sistema agora.
+/// Tira uma leitura do sistema agora (pelo seam `Processos` da plataforma instalada).
 pub fn snapshot() -> Snapshot {
+    snapshot_com(&*crate::ambiente::plat().processos)
+}
+
+/// **O quê:** a leitura do sistema sobre um `Processos` dado (a plataforma real ou um falso).
+///
+/// **Onde:** [`snapshot`] e os testes. O que a plataforma não sabe dizer (`None`) não limita:
+/// RAM desconhecida = folga total (`u64::MAX / 2`), load desconhecido = `0.0`.
+pub fn snapshot_com(p: &dyn Processos) -> Snapshot {
     Snapshot {
         threads: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1),
-        mem_available_mb: mem_available_mb(),
-        load1: loadavg1(),
-        running_claudes: count_claude_processes(),
+        mem_available_mb: p.memoria_disponivel_mb().unwrap_or(u64::MAX / 2),
+        load1: p.carga1().unwrap_or(0.0),
+        running_claudes: p.contar("claude"),
     }
 }
 
@@ -145,81 +155,11 @@ pub fn budget() -> Budget {
     compute(snapshot(), Params::default())
 }
 
-/// RAM disponível em MB via `/proc/meminfo` (MemAvailable). 0 se indisponível (→ RAM não limita além do piso).
-fn mem_available_mb() -> u64 {
-    let Ok(s) = std::fs::read_to_string("/proc/meminfo") else { return u64::MAX / 2 };
-    for line in s.lines() {
-        if let Some(rest) = line.strip_prefix("MemAvailable:") {
-            // formato: "MemAvailable:   12345678 kB"
-            if let Some(kb) = rest.split_whitespace().next().and_then(|n| n.parse::<u64>().ok()) {
-                return kb / 1024;
-            }
-        }
-    }
-    u64::MAX / 2
-}
-
-/// Load average de 1 min via `/proc/loadavg`. 0.0 se indisponível (→ load não limita).
-fn loadavg1() -> f64 {
-    std::fs::read_to_string("/proc/loadavg")
-        .ok()
-        .and_then(|s| s.split_whitespace().next().and_then(|n| n.parse::<f64>().ok()))
-        .unwrap_or(0.0)
-}
-
-/// Conta instâncias do `claude` (Claude Code) rodando na MÁQUINA — varre `/proc/<pid>/`. Heurística:
-/// o executável (argv0) é `claude`, OU é um runtime (`node`/`bun`) cujo cmdline aponta pro CLI do
-/// Claude (`.../claude`, `claude/cli`, `claude-code`). NÃO conta o próprio `schematize`. Cada PID = 1.
+/// Conta instâncias do `claude` (Claude Code) rodando na MÁQUINA, pelo seam `Processos`.
+/// Heurística (na lib da plataforma): o executável é `claude`, OU um runtime (`node`/`bun`) cujo
+/// cmdline aponta pro CLI do Claude. NÃO conta o próprio `schematize`. Cada PID = 1.
 pub fn count_claude_processes() -> usize {
-    let Ok(entries) = std::fs::read_dir("/proc") else { return 0 };
-    let mut n = 0usize;
-    for e in entries.flatten() {
-        let name = e.file_name();
-        let Some(pid) = name.to_str().and_then(|s| s.parse::<u32>().ok()) else { continue };
-        let cmdline_path = format!("/proc/{pid}/cmdline");
-        let Ok(raw) = std::fs::read(&cmdline_path) else { continue };
-        if raw.is_empty() {
-            continue;
-        }
-        // cmdline é separado por NUL; argv0 = 1º token.
-        let args: Vec<String> = raw
-            .split(|b| *b == 0)
-            .filter(|s| !s.is_empty())
-            .map(|s| String::from_utf8_lossy(s).into_owned())
-            .collect();
-        if args.is_empty() {
-            continue;
-        }
-        if cmdline_e_claude(&args) {
-            n += 1;
-        }
-    }
-    n
-}
-
-/// Decide se um cmdline é uma instância do Claude Code (não o schematize, não um grep/editor).
-/// Público porque o supervisor do overdev (`overdev::supervisor`) precisa do MESMO critério
-/// pra saber se um run tem dono — dois detectores divergentes dariam relançamento indevido.
-pub fn cmdline_e_claude(args: &[String]) -> bool {
-    let argv0 = args[0].as_str();
-    let base0 = argv0.rsplit(['/', '\\']).next().unwrap_or(argv0);
-    // Falsos positivos comuns: qualquer processo com "~/.claude/..." nos args (config/MCP). Só conta
-    // se o EXECUTÁVEL for claude, ou um runtime rodando o CLI do claude como script.
-    if base0 == "claude" {
-        return true;
-    }
-    let is_runtime = matches!(base0, "node" | "nodejs" | "bun" | "deno");
-    if is_runtime {
-        // um dos args seguintes tem que ser o script/binário do claude (não só uma flag --mcp ~/.claude).
-        return args.iter().skip(1).any(|a| {
-            let b = a.rsplit(['/', '\\']).next().unwrap_or(a);
-            b == "claude"
-                || a.ends_with("/claude/cli.js")
-                || a.contains("claude-code")
-                || a.contains("/claude/cli")
-        });
-    }
-    false
+    crate::ambiente::plat().processos.contar("claude")
 }
 
 // ---------------------------------------------------------------------------
@@ -258,6 +198,7 @@ pub fn persist(b: &Budget) -> std::io::Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::processos_falso::Falso;
 
     fn snap(threads: usize, mem_mb: u64, load1: f64, claudes: usize) -> Snapshot {
         Snapshot { threads, mem_available_mb: mem_mb, load1, running_claudes: claudes }
@@ -321,5 +262,25 @@ mod tests {
         assert_eq!((s2.mains, s2.subagents_each, s2.total_used), (2, 5, 12));
         let s4 = b.split_plan(4);
         assert_eq!((s4.mains, s4.subagents_each, s4.total_used), (4, 2, 12));
+    }
+
+    /// O snapshot usa o que a plataforma responde e conta os `claude` pelo nome certo.
+    #[test]
+    fn snapshot_vem_do_seam_processos() {
+        let s = snapshot_com(&Falso {
+            mem: Some(8192),
+            carga: Some(1.5),
+            claudes: 3,
+            ..Falso::default()
+        });
+        assert_eq!((s.mem_available_mb, s.load1, s.running_claudes), (8192, 1.5, 3));
+    }
+
+    /// Desconhecido (`None`) não limita: RAM folgada e load zero — nunca um número inventado baixo.
+    #[test]
+    fn plataforma_que_nao_sabe_nao_limita() {
+        let s = snapshot_com(&Falso::default());
+        assert_eq!(s.mem_available_mb, u64::MAX / 2);
+        assert_eq!(s.load1, 0.0);
     }
 }

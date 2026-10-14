@@ -16,9 +16,19 @@ pub(crate) fn gate_ok() -> bool {
     // Sem gate legível, o veredito seguro é "não bloqueia": o gate é OPCIONAL, e um erro
     // de leitura nosso não pode virar prisão pro usuário.
     match g.to_str() {
-        Some(caminho) => util::run("bash", &[caminho]).is_ok(),
+        Some(caminho) => gate_roda(&*crate::ambiente::plat().shell, caminho),
         None => true,
     }
+}
+
+/// **O quê:** roda `bash <caminho>` pelo seam `Shell` e diz se saiu 0.
+///
+/// **Onde:** [`gate_ok`] e os testes (com um `Shell` falso). O caminho vai entre aspas simples
+/// (`'` vira `'\''`): ele passa por UM shell e um nome com espaço ou `;` não pode virar comando.
+/// Falha ao lançar conta como gate vermelho, igual a antes.
+pub(crate) fn gate_roda(shell: &dyn schematize_plataforma::seams::Shell, caminho: &str) -> bool {
+    let cmd = format!("bash {}", crate::agentrun::aspas_sh(caminho));
+    shell.run(&cmd).is_ok_and(|o| o.status.success())
 }
 
 pub(crate) fn drain_stdin() {
@@ -131,10 +141,9 @@ pub fn check() {
 /// o settings do usuário; erro é engolido de propósito — um reparo que falha não pode
 /// derrubar o gate nem virar ruído na parada do agente.
 fn reparar_hooks_do_projeto() {
-    let exe = crate::nucleo::util::self_exe();
     let projeto = std::env::current_dir().ok();
     for arquivo in crate::settings::arquivos_de_settings(projeto.as_deref()) {
-        let _ = crate::settings::repara_hooks_em(&arquivo, &exe);
+        let _ = crate::settings::repara_hooks_em(crate::ambiente::hooks(), &arquivo);
     }
 }
 
@@ -158,4 +167,53 @@ pub fn guard() {
         }
     });
     println!("{v}");
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use schematize_plataforma::seams::Shell;
+    use std::os::unix::process::ExitStatusExt;
+    use std::process::{ExitStatus, Output};
+    use std::sync::Mutex;
+
+    /// `Shell` falso: devolve o código dado e guarda o comando recebido.
+    struct Falso {
+        codigo: i32,
+        visto: Mutex<Vec<String>>,
+    }
+    impl Shell for Falso {
+        /// **O quê:** registra `cmd` e devolve saída com o código programado. **Onde:** testes.
+        fn run(&self, cmd: &str) -> std::io::Result<Output> {
+            if let Ok(mut v) = self.visto.lock() {
+                v.push(cmd.to_string());
+            }
+            Ok(Output {
+                status: ExitStatus::from_raw(self.codigo << 8),
+                stdout: Vec::new(),
+                stderr: Vec::new(),
+            })
+        }
+        /// **O quê:** sempre existe. **Onde:** testes.
+        fn existe(&self, _bin: &str) -> bool {
+            true
+        }
+    }
+
+    /// O gate roda `bash '<caminho>'` pelo seam, e o código de saída decide o veredito.
+    #[test]
+    fn o_gate_passa_pelo_shell_da_plataforma() {
+        let verde = Falso { codigo: 0, visto: Mutex::new(vec![]) };
+        assert!(gate_roda(&verde, "/p/meu projeto/gate.sh"));
+        assert_eq!(*verde.visto.lock().unwrap(), ["bash '/p/meu projeto/gate.sh'"]);
+        assert!(!gate_roda(&Falso { codigo: 1, visto: Mutex::new(vec![]) }, "/p/gate.sh"));
+    }
+
+    /// Aspa simples no caminho não escapa do quoting (não vira comando).
+    #[test]
+    fn caminho_hostil_fica_entre_aspas() {
+        let f = Falso { codigo: 0, visto: Mutex::new(vec![]) };
+        assert!(gate_roda(&f, "/p/a'; rm -rf ~; '/gate.sh"));
+        assert_eq!(*f.visto.lock().unwrap(), ["bash '/p/a'\\''; rm -rf ~; '\\''/gate.sh'"]);
+    }
 }

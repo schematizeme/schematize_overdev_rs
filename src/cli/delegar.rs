@@ -1,10 +1,10 @@
 //! O subcomando `delegar` (ADR-0024) — a borda de linha de comando da estrutura de agentes.
 //!
-//! **O quê:** lê o brief, chama [`overdev_casa::agentes::delegar`] e imprime o resultado.
+//! **O quê:** lê o brief, chama [`crate::agentes::delegar`] e imprime o resultado.
 //! Códigos de saída: 0 ok · 2 uso/config inválida · 3 indisponível · 4 motor falhou.
 //! **Onde:** `comandos::executar`; chamado por agentes (principal) via `--brief-stdin --json`.
 
-use overdev_casa::agentes::{self, Agentes, Desfecho, Pedido};
+use crate::agentes::{self, Agentes, Desfecho, Pedido};
 use serde_json::{json, Value};
 use std::io::Read;
 use std::path::PathBuf;

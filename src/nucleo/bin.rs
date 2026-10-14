@@ -8,39 +8,21 @@
 //! `~/.bashrc` nem `~/.profile` —, então um `Exec=schematize-overdev-gui` não acharia o
 //! binário em `~/.cargo/bin`. É a armadilha que já quebrou o lançador do hub.
 
-use std::path::PathBuf;
-
-/// **O quê:** o caminho absoluto de `nome`, procurando nos lugares em que a casa instala.
+/// **O quê:** o caminho absoluto de `nome`, procurando nos lugares em que a casa instala
+/// (`~/.cargo/bin` primeiro, depois o `$PATH`; a extensão do SO fica por conta da lib).
 ///
-/// **Onde:** [`super::desktop::resolver_gui`].
+/// **Onde:** [`super::desktop::resolver_gui`] e o `rerun`.
 ///
 /// **A ordem é a da confiança:** `~/.cargo/bin` primeiro, porque é onde o `install.sh` e o
 /// `schematize-market` põem tudo, e é o par que se atualiza junto. Só depois o `$PATH`, que
 /// pode ter uma cópia velha de outra instalação.
-pub fn resolve_bin(nome: &str) -> Option<PathBuf> {
-    let nome = if cfg!(windows) && !nome.ends_with(".exe") {
-        format!("{nome}.exe")
-    } else {
-        nome.to_string()
-    };
-    if let Some(h) = home() {
-        let c = h.join(".cargo").join("bin").join(&nome);
-        if c.is_file() {
-            return Some(c);
-        }
-    }
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path).map(|d| d.join(&nome)).find(|c| c.is_file())
-}
+pub use schematize_plataforma::bin::resolve_bin;
 
-/// **O quê:** o diretório home, na variável que cada plataforma usa.
+/// **O quê:** o diretório home, na variável que cada plataforma usa (`HOME`, depois
+/// `USERPROFILE`; vazio ou relativo é descartado).
 ///
-/// **Onde:** [`resolve_bin`] e os chamadores de [`super::desktop`].
-pub fn home() -> Option<PathBuf> {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("USERPROFILE").map(PathBuf::from))
-}
+/// **Onde:** os chamadores de [`super::desktop`].
+pub use schematize_plataforma::bin::home;
 
 #[cfg(test)]
 mod tests {

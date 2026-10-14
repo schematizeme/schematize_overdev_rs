@@ -12,9 +12,9 @@ use super::estado::App;
 use super::msg::Msg;
 use super::tema;
 use super::widgets::{btn, cartao, negrito, rolagem, status, txt};
+use crate::agentes::{self, Agentes, Disponibilidade, Motor, Papel};
 use iced::widget::{column, pick_list, row, text_input, toggler, Space};
 use iced::{Alignment, Color, Element, Fill, Task};
-use overdev_casa::agentes::{self, Agentes, Disponibilidade, Motor, Papel};
 
 /// O vermelho do erro inline (o âmbar da paleta é aviso, não falha). **Onde:** [`App::ver_agentes`].
 fn vermelho(escuro: bool) -> Color {

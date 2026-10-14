@@ -160,7 +160,7 @@ mod tests {
     /// em «Executar» e «Dividir + lançar», que spawnariam um `claude` de verdade.
     #[test]
     fn o_terminal_de_executar_e_de_dividir_roda_exatamente_isto() {
-        use crate::cli::comando_para_terminal;
+        use crate::gui::cli::comando_para_terminal;
         use std::path::Path;
         let bin = "/home/u/.cargo/bin/schematize-overdev";
         let dir = Path::new("/p/meu projeto");

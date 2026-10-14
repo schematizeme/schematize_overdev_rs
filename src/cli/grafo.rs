@@ -11,9 +11,9 @@
 //!
 //! O documento é CONTRATO com outro processo; `tests/json_grafo.rs` fixa cada nome e tipo.
 
+use crate::agentrun;
 use crate::cli::saidajson::{esc, texto_ou_null};
-use overdev_casa::agentrun;
-use overdev_casa::panel::{self, Edge, Node};
+use crate::panel::{self, Edge, Node};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -124,7 +124,7 @@ fn prompt_da_receita(nome: &str, raiz: &Path) -> Result<String, String> {
         "reindex" => Ok(agentrun::reindex_prompt()),
         "overdev" => Ok(agentrun::overdev_prompt_em(
             raiz,
-            &overdev_casa::overdev::progresso::objetivo_at(raiz).unwrap_or_default(),
+            &crate::overdev::progresso::objetivo_at(raiz).unwrap_or_default(),
         )),
         outra => Err(format!(
             "não conheço a receita `{outra}`. As que existem: archive-todos, reindex, overdev"
@@ -143,7 +143,7 @@ pub fn terminal(prompt: Option<&str>, receita: Option<&str>, json: bool) -> Resu
         (Some(p), _) if p.trim().is_empty() => return Err("o --prompt está vazio".into()),
         (Some(p), _) => agentrun::launch_prompt_in_terminal(&raiz, p)?,
         (None, Some("overdev")) => {
-            let obj = overdev_casa::overdev::progresso::objetivo_at(&raiz).unwrap_or_default();
+            let obj = crate::overdev::progresso::objetivo_at(&raiz).unwrap_or_default();
             agentrun::launch_in_terminal(&raiz, &obj)?
         }
         (None, Some(r)) => {

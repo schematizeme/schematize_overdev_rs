@@ -34,6 +34,23 @@ do Slint — paridade com a tela de Overdev do hub. O iced carrega x11/wayland/x
 `dlopen`: **não há libs `-dev` de sistema** para compilar nem para o CI. O release publica os mesmos
 assets de antes (`schematize-overdev-*` e `schematize-overdev-gui-*`). A 0.2.1 corrige o build da janela em macOS e Windows (o release 0.2.0 só saiu para Linux).
 
+## Lib com costuras de plataforma (0.4.0, ADR-0026)
+
+Este repo é **Unix-only** (Linux, FreeBSD, macOS). O corpo do CLI e da janela mora na lib
+`overdev_casa`, que recebe a plataforma por injeção:
+
+- `overdev_casa::cli::run(args, &Plataforma, &dyn Hooks) -> i32` — o `schematize-overdev`;
+- `overdev_casa::gui::run(args, &Plataforma, &dyn Hooks) -> iced::Result` — a janela, atrás da
+  feature `gui` (padrão; `--no-default-features` deixa o iced de fora);
+- `overdev_casa::hooks::{Hooks, HooksUnix}` — como o `settings.json` do Claude Code guarda o
+  comando de `check`/`guard`; `overdev_casa::agentrun::{montar_path, extras_unix}` — o `PATH` do
+  filho com separador e diretórios como dado.
+
+`Plataforma` vem de `schematize_plataforma` (repo `schematize_plataforma_rs`): `shell`, `terminal`,
+`abridor`, `atalhos`, `processos`… Os dois binários são só `main` de poucas linhas com
+`Plataforma::unix()` + `HooksUnix`. O `.exe` do Windows é montado no repo `schematize_windows_rs`
+com a `Plataforma` e os `Hooks` do Windows; **este repo não publica mais asset Windows**.
+
 ## Agentes (`agentes.toml`, ADR-0024)
 
 Quem faz o quê num overdev é configuração, não código: o **principal** (Claude Opus) só planeja,

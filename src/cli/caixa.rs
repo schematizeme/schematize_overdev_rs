@@ -4,9 +4,9 @@
 //! interromper ninguém e sem risco de perder a demanda. A lógica (e as garantias de
 //! concorrência) mora em `overdev::caixa`; aqui é só a face de linha de comando.
 
+use crate::agentrun;
 use crate::cli::args::CaixaCmd;
-use overdev_casa::agentrun;
-use overdev_casa::overdev::caixa;
+use crate::overdev::caixa;
 use std::path::PathBuf;
 
 fn raiz() -> Result<PathBuf, String> {

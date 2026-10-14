@@ -238,7 +238,7 @@ impl App {
 mod tests {
     use super::super::msg::Aba;
     use super::*;
-    use overdev_casa::projects::Project;
+    use crate::projects::Project;
     use std::path::PathBuf;
 
     fn app() -> App {

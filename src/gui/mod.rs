@@ -1,10 +1,12 @@
-//! **schematize-overdev-gui** — a janela do `schematize-overdev`.
+//! **A janela do `schematize-overdev`** (`schematize-overdev-gui`), como módulo da lib (ADR-0026).
 //!
 //! **O quê:** mostra o progresso do run do projeto, o checklist, a FILA DE PERGUNTAS (o quiz,
 //! que se responde clicando), o histórico de snapshots, a execução, a caixa de entrada e as notas.
 //! Troca de projeto pelo botão «Trocar projeto».
 //!
-//! **Onde:** o ícone do app, e a aba de Overdev do hub, que delega para cá (ADR-0018 E6).
+//! **Onde:** o ícone do app, e a aba de Overdev do hub, que delega para cá (ADR-0018 E6). O
+//! binário `schematize-overdev-gui` é só `gui::run(args, &Plataforma, &dyn Hooks)`; o repo
+//! `schematize_windows_rs` chama o mesmo `run` com as costuras do Windows. Atrás da feature `gui`.
 //!
 //! ## iced, no menor perfil que existe (tiny-skia, sem wgpu)
 //!
@@ -16,7 +18,7 @@
 //! ## Ela mora no MESMO repo do CLI (ADR-0020), e continua falando por `--json`
 //!
 //! **Estar no mesmo repo é conveniência de distribuição, não permissão para acoplar.** A janela
-//! não usa o crate `overdev_casa` a não ser pela `nucleo::procedencia` (de qual commit ela é) e
+//! não usa o domínio do crate a não ser pela `nucleo::procedencia` (de qual commit ela é) e
 //! pelo seletor de projeto (`projects`/`config`, que são plataforma): roda o binário e lê o
 //! `--json`. Há teste lendo o próprio fonte para cobrar isso.
 //!
@@ -57,9 +59,11 @@ mod update;
 mod view;
 mod widgets;
 
+use crate::hooks::Hooks;
 use estado::App;
 use iced::{window, Size, Task};
 use msg::{Aba, Msg};
+use schematize_plataforma::seams::Plataforma;
 
 use std::path::PathBuf;
 
@@ -104,8 +108,7 @@ fn iniciar(args: &[String]) -> (App, Task<Msg>) {
     let dados = projeto::dados_dir();
     let cwd = std::env::current_dir().ok();
     let dir = projeto::dir_inicial(dir_dos_args(args), &dados, cwd);
-    let versao =
-        format!("schematize-overdev-gui {}", overdev_casa::nucleo::procedencia::rotulo_versao());
+    let versao = format!("schematize-overdev-gui {}", crate::nucleo::procedencia::rotulo_versao());
     let app = App::novo(dir, dados, versao, aba_dos_args(args), true);
     let primeira = Task::batch([
         app.recarregar(carga::Escopo::TUDO),
@@ -117,23 +120,31 @@ fn iniciar(args: &[String]) -> (App, Task<Msg>) {
     (app, primeira)
 }
 
-fn main() -> iced::Result {
+/// **O quê:** abre a janela: responde `--version` e sai, garante o market e roda o `iced`.
+/// `args` é o argv completo (com o argv0).
+///
+/// **Onde:** o `main` de `schematize-overdev-gui` (e do `.exe` no repo Windows). `plat` e
+/// `hooks` ficam instalados em [`crate::ambiente`] enquanto a janela roda (terminal, abridor e
+/// processos das ações passam por eles).
+pub fn run(args: Vec<String>, plat: &Plataforma, hooks: &dyn Hooks) -> iced::Result {
+    let args: Vec<String> = args.into_iter().skip(1).collect();
     // **RESPONDE `--version` E SAI, antes de qualquer coisa gráfica.**
     //
     // Sem isto a janela IGNORA a flag e ABRE — e quem perguntou fica esperando. O `debugreport`
     // do hub pergunta a versão de cada binário do ecossistema.
-    if std::env::args().skip(1).any(|a| a == "--version" || a == "-V") {
-        println!("schematize-overdev-gui {}", overdev_casa::nucleo::procedencia::rotulo_versao());
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        println!("schematize-overdev-gui {}", crate::nucleo::procedencia::rotulo_versao());
         return Ok(());
     }
-    // Parasita do market: antes de abrir a janela (bloqueante só quando falta, uma vez por máquina).
-    overdev_casa::market_parasita::garantir();
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    iced::application(move || iniciar(&args), App::update, App::view)
-        .title(App::titulo)
-        .theme(|a: &App| a.tema.clone())
-        .window(config_janela())
-        .run()
+    crate::ambiente::com(plat, hooks, || {
+        // Parasita do market: antes de abrir a janela (bloqueante só quando falta, uma vez por máquina).
+        crate::ambiente::garantir_market();
+        iced::application(move || iniciar(&args), App::update, App::view)
+            .title(App::titulo)
+            .theme(|a: &App| a.tema.clone())
+            .window(config_janela())
+            .run()
+    })
 }
 
 /// O quê: monta as `window::Settings` da janela (tamanho, mínimo e, no Linux, o `application_id`).
@@ -197,7 +208,7 @@ mod tests {
     /// varredores — por isso o teste `a_lista_de_fontes_cobre_a_pasta` confere com o disco.
     fn fontes_da_janela() -> Vec<(&'static str, &'static str)> {
         vec![
-            ("main.rs", include_str!("main.rs")),
+            ("mod.rs", include_str!("mod.rs")),
             ("agentes_estado.rs", include_str!("agentes_estado.rs")),
             ("agentes_tela.rs", include_str!("agentes_tela.rs")),
             ("caixa.rs", include_str!("caixa.rs")),
@@ -268,7 +279,7 @@ mod tests {
     #[test]
     fn nao_sobrou_slint() {
         for (nome, fonte) in fontes_da_janela() {
-            if nome == "main.rs" {
+            if nome == "mod.rs" {
                 // O próprio varredor cita a palavra.
                 continue;
             }
@@ -279,7 +290,7 @@ mod tests {
     }
 
     /// **A casca não sabe NADA do domínio** (D4 do ADR-0016): a janela só usa
-    /// `overdev_casa::nucleo::procedencia` (plataforma), o seletor de projeto (`projeto.rs`, que
+    /// `crate::nucleo::procedencia` (plataforma), o seletor de projeto (`projeto.rs`, que
     /// usa `projects`/`config`, também plataforma) e fala com o BINÁRIO por `--json`.
     #[test]
     fn a_casca_nao_sabe_nada_do_dominio() {
@@ -289,12 +300,12 @@ mod tests {
             viu_cli |= codigo.iter().any(|l| l.contains("cli::rodar"));
             for l in &codigo {
                 for proibido in [
-                    "overdev_casa::overdev",
-                    "overdev_casa::overdevdb",
-                    "overdev_casa::agents",
-                    "overdev_casa::settings",
-                    "overdev_casa::panel",
-                    "overdev_casa::agentrun",
+                    "crate::overdev",
+                    "crate::overdevdb",
+                    "crate::agents",
+                    "crate::settings",
+                    "crate::panel",
+                    "crate::agentrun",
                 ] {
                     assert!(
                         !l.contains(proibido),
@@ -315,13 +326,13 @@ mod tests {
         }
         // E NENHUMA tela usa o crate do domínio nem sobe processo por conta própria: elas falam por
         // `cli::rodar`/`ponte` (a casca) e a abertura do terminal/editor é da plataforma. Exceções:
-        // `projeto.rs` (plataforma: lista e memória do projeto) e `main.rs`/`cli.rs`/`terminal.rs`.
+        // `projeto.rs` (plataforma: lista e memória do projeto) e `mod.rs`/`cli.rs`/`terminal.rs`.
         for (nome, fonte) in fontes_da_janela() {
             // `agentes_*`: a aba Agentes edita o `agentes.toml` (config, não o domínio do run) pela API
-            // `overdev_casa::agentes` — ADR-0024; checar motores sobe `codex login status` por ela.
+            // `crate::agentes` — ADR-0024; checar motores sobe `codex login status` por ela.
             if matches!(
                 nome,
-                "main.rs"
+                "mod.rs"
                     | "cli.rs"
                     | "terminal.rs"
                     | "projeto.rs"
@@ -332,7 +343,7 @@ mod tests {
                 continue;
             }
             for l in producao_de(fonte) {
-                for proibido in ["overdev_casa", "Command::new", "std::process"] {
+                for proibido in ["crate::", "Command::new", "std::process"] {
                     assert!(!l.contains(proibido), "{nome} usou `{proibido}`: {l}");
                 }
             }
@@ -343,15 +354,11 @@ mod tests {
     /// de desenvolvimento e fixados) e `nucleo::{caminhos,util}` (onde o app guarda estado).
     #[test]
     fn o_seletor_so_usa_a_plataforma_do_crate() {
-        let permitido = [
-            "overdev_casa::projects",
-            "overdev_casa::config",
-            "overdev_casa::nucleo::caminhos",
-            "overdev_casa::nucleo::util",
-        ];
+        let permitido =
+            ["crate::projects", "crate::config", "crate::nucleo::caminhos", "crate::nucleo::util"];
         let mut usos = 0;
         for l in producao_de(include_str!("projeto.rs")) {
-            for (i, _) in l.match_indices("overdev_casa::") {
+            for (i, _) in l.match_indices("crate::") {
                 usos += 1;
                 assert!(permitido.iter().any(|p| l[i..].starts_with(p)), "projeto.rs usou: {l}");
             }
