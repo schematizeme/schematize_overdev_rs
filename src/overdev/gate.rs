@@ -16,19 +16,17 @@ pub(crate) fn gate_ok() -> bool {
     // Sem gate legível, o veredito seguro é "não bloqueia": o gate é OPCIONAL, e um erro
     // de leitura nosso não pode virar prisão pro usuário.
     match g.to_str() {
-        Some(caminho) => gate_roda(caminho),
+        Some(caminho) => gate_roda(&*crate::ambiente::plat().shell, caminho),
         None => true,
     }
 }
 
-/// **O quê:** roda `bash <caminho>` (invocação NÃO-login, exatamente como antes) e diz se saiu 0.
+/// **O quê:** roda `bash <caminho>` pelo seam `Shell::executar` (direto, não-login, sem parsing
+/// de shell; stdio NÃO herdado, como o `output()` de antes) e diz se saiu 0.
 ///
-/// **Onde:** [`gate_ok`]. Falha ao lançar conta como gate vermelho.
-///
-/// TODO(ADR-0026 F4c): trocar por `Shell::executar(argv)` quando o seam existir; o
-/// `Shell::run` atual é `-lc` (login) e mudaria o comportamento.
-fn gate_roda(caminho: &str) -> bool {
-    util::run("bash", &[caminho]).is_ok()
+/// **Onde:** [`gate_ok`] e os testes (com um `Shell` falso). Falha ao lançar = gate vermelho.
+pub(crate) fn gate_roda(shell: &dyn schematize_plataforma::seams::Shell, caminho: &str) -> bool {
+    shell.executar(&["bash", caminho], false).is_ok_and(|st| st.success())
 }
 
 pub(crate) fn drain_stdin() {
@@ -167,4 +165,54 @@ pub fn guard() {
         }
     });
     println!("{v}");
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use schematize_plataforma::seams::Shell;
+    use std::os::unix::process::ExitStatusExt;
+    use std::process::{ExitStatus, Output};
+    use std::sync::Mutex;
+
+    /// `Shell` falso: devolve o código dado e guarda o argv recebido.
+    struct Falso {
+        codigo: i32,
+        visto: Mutex<Vec<Vec<String>>>,
+    }
+    impl Shell for Falso {
+        /// **O quê:** não usado pelo gate. **Onde:** testes.
+        fn run(&self, _cmd: &str) -> std::io::Result<Output> {
+            Err(std::io::Error::other("o gate não usa run (login shell)"))
+        }
+        /// **O quê:** sempre existe. **Onde:** testes.
+        fn existe(&self, _bin: &str) -> bool {
+            true
+        }
+        /// **O quê:** registra o argv e devolve o código programado. **Onde:** testes.
+        fn executar(&self, argv: &[&str], _herdar: bool) -> std::io::Result<ExitStatus> {
+            if let Ok(mut v) = self.visto.lock() {
+                v.push(argv.iter().map(|s| s.to_string()).collect());
+            }
+            Ok(ExitStatus::from_raw(self.codigo << 8))
+        }
+    }
+
+    /// O gate roda exatamente `["bash", caminho]` (caminho como UM argumento), e o código de
+    /// saída decide o veredito.
+    #[test]
+    fn o_gate_executa_bash_com_o_caminho_como_um_argumento() {
+        let verde = Falso { codigo: 0, visto: Mutex::new(vec![]) };
+        assert!(gate_roda(&verde, "/p/meu projeto/gate.sh"));
+        assert_eq!(*verde.visto.lock().unwrap(), [["bash", "/p/meu projeto/gate.sh"]]);
+        assert!(!gate_roda(&Falso { codigo: 1, visto: Mutex::new(vec![]) }, "/p/gate.sh"));
+    }
+
+    /// Caminho hostil segue como argumento literal (sem shell para interpretá-lo).
+    #[test]
+    fn caminho_hostil_e_argumento_literal() {
+        let f = Falso { codigo: 0, visto: Mutex::new(vec![]) };
+        assert!(gate_roda(&f, "/p/a'; rm -rf ~; '/gate.sh"));
+        assert_eq!(*f.visto.lock().unwrap(), [["bash", "/p/a'; rm -rf ~; '/gate.sh"]]);
+    }
 }
