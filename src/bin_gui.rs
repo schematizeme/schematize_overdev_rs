@@ -6,5 +6,5 @@ use schematize_plataforma::seams::Plataforma;
 
 fn main() -> iced::Result {
     let args: Vec<String> = std::env::args().collect();
-    overdev_casa::gui::run(args, &Plataforma::unix(), &overdev_casa::hooks::HooksUnix)
+    overdev_casa::gui::run(args, Plataforma::unix(), Box::new(overdev_casa::hooks::HooksUnix))
 }

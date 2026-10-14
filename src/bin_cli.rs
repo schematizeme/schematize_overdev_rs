@@ -7,6 +7,7 @@ use schematize_plataforma::seams::Plataforma;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let code = overdev_casa::cli::run(args, &Plataforma::unix(), &overdev_casa::hooks::HooksUnix);
+    let code =
+        overdev_casa::cli::run(args, Plataforma::unix(), Box::new(overdev_casa::hooks::HooksUnix));
     std::process::exit(code);
 }

@@ -126,7 +126,7 @@ fn iniciar(args: &[String]) -> (App, Task<Msg>) {
 /// **Onde:** o `main` de `schematize-overdev-gui` (e do `.exe` no repo Windows). `plat` e
 /// `hooks` ficam instalados em [`crate::ambiente`] enquanto a janela roda (terminal, abridor e
 /// processos das ações passam por eles).
-pub fn run(args: Vec<String>, plat: &Plataforma, hooks: &dyn Hooks) -> iced::Result {
+pub fn run(args: Vec<String>, plat: Plataforma, hooks: Box<dyn Hooks>) -> iced::Result {
     let args: Vec<String> = args.into_iter().skip(1).collect();
     // **RESPONDE `--version` E SAI, antes de qualquer coisa gráfica.**
     //
@@ -136,7 +136,11 @@ pub fn run(args: Vec<String>, plat: &Plataforma, hooks: &dyn Hooks) -> iced::Res
         println!("schematize-overdev-gui {}", crate::nucleo::procedencia::rotulo_versao());
         return Ok(());
     }
-    crate::ambiente::com(plat, hooks, || {
+    if let Err(e) = crate::ambiente::instalar(plat, hooks) {
+        eprintln!("erro: {e}");
+        return Ok(());
+    }
+    {
         // Parasita do market: antes de abrir a janela (bloqueante só quando falta, uma vez por máquina).
         crate::ambiente::garantir_market();
         iced::application(move || iniciar(&args), App::update, App::view)
@@ -144,7 +148,7 @@ pub fn run(args: Vec<String>, plat: &Plataforma, hooks: &dyn Hooks) -> iced::Res
             .theme(|a: &App| a.tema.clone())
             .window(config_janela())
             .run()
-    })
+    }
 }
 
 /// O quê: monta as `window::Settings` da janela (tamanho, mínimo e, no Linux, o `application_id`).

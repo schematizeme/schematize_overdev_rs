@@ -50,9 +50,13 @@ fn restaurar_sigpipe() {}
 /// **Parasita depois do parse** (o clap já tratou `--version`/`--help`); os hooks
 /// `guard`/`check` ficam de fora dentro do parasita — rodam a cada tool call. Erro NUNCA é
 /// engolido (piso 4): vai ao stderr e vira código 1.
-pub fn run(args: Vec<String>, plat: &Plataforma, hooks: &dyn Hooks) -> i32 {
+pub fn run(args: Vec<String>, plat: Plataforma, hooks: Box<dyn Hooks>) -> i32 {
     restaurar_sigpipe();
-    crate::ambiente::com(plat, hooks, || {
+    if let Err(e) = crate::ambiente::instalar(plat, hooks) {
+        eprintln!("erro: {e}");
+        return 1;
+    }
+    {
         let cli = match Cli::try_parse_from(args) {
             Ok(c) => c,
             Err(e) => {
@@ -69,5 +73,5 @@ pub fn run(args: Vec<String>, plat: &Plataforma, hooks: &dyn Hooks) -> i32 {
                 1
             }
         }
-    })
+    }
 }
