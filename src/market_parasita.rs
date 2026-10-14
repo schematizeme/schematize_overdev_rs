@@ -72,7 +72,9 @@ pub fn url_do_asset(nome: &str, os: &str, arch: &str) -> Option<String> {
         _ => return None,
     };
     let sufixo = match (os, arch) {
-        ("linux", "x86_64") | ("macos", "x86_64") | ("macos", "arm64") | ("freebsd", "x86_64") => "",
+        ("linux", "x86_64") | ("macos", "x86_64") | ("macos", "arm64") | ("freebsd", "x86_64") => {
+            ""
+        }
         ("windows", "x86_64") => ".exe",
         _ => return None,
     };

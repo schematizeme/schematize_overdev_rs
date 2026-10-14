@@ -134,3 +134,74 @@ jobs:
           set -euo pipefail
           gh release upload "${GITHUB_REF_NAME}" \
             "${{ matrix.asset }}" "${{ matrix.asset_gui }}" --clobber
+
+  # FreeBSD x86_64 — job PRÓPRIO porque o runner não é FreeBSD: o CLI é CROSS-COMPILADO com `cross`
+  # (imagem do alvo x86_64-unknown-freebsd) e EXECUTADO de verdade numa VM FreeBSD antes de ser
+  # publicado (um asset que baixa e não executa só falha na máquina de quem instalou). Tudo PINADO:
+  # `cross` 0.2.5, a VM por SHA (v1.5.9) e o release do FreeBSD. Independe do job `binarios`:
+  # FreeBSD falhar não cancela os outros assets. A janela é best-effort (compilada NATIVAMENTE na
+  # VM, `continue-on-error`) e só é anexada se compilou.
+  freebsd:
+    needs: criar
+    runs-on: ubuntu-latest
+    env:
+      ASSET: schematize-overdev-freebsd-x86_64
+      ASSET_GUI: schematize-overdev-gui-freebsd-x86_64
+      TARGET: x86_64-unknown-freebsd
+    steps:
+      - uses: actions/checkout@v4
+      - name: cross 0.2.5 (versão pinada)
+        run: |
+          set -euo pipefail
+          rustup target add "$TARGET"
+          curl -fsSL https://github.com/cross-rs/cross/releases/download/v0.2.5/cross-x86_64-unknown-linux-gnu.tar.gz \
+            | tar -xz -C "$RUNNER_TEMP"
+          "$RUNNER_TEMP/cross" --version
+      - name: Build do CLI (release, cross)
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/cross" build --release --locked --target "$TARGET" --bin schematize-overdev
+          cp "target/$TARGET/release/schematize-overdev" "$ASSET"
+      - name: O asset executa? (VM FreeBSD)
+        uses: vmactions/freebsd-vm@c46abacb49f09938ca4e1702d15d836285d694cc # v1.5.9
+        with:
+          release: "14.2"
+          usesh: true
+          copyback: false
+          run: |
+            set -eu
+            uname -sr
+            [ "$(uname -s)" = "FreeBSD" ]
+            chmod +x ./schematize-overdev-freebsd-x86_64
+            out="$(./schematize-overdev-freebsd-x86_64 --version)"
+            echo "$out"
+            case "$out" in
+              schematize-overdev*) ;;
+              *) echo "saída de --version inesperada: $out" >&2; exit 1 ;;
+            esac
+      - name: Janela (opcional, nativa na VM FreeBSD)
+        id: janela
+        continue-on-error: true
+        timeout-minutes: 60
+        uses: vmactions/freebsd-vm@c46abacb49f09938ca4e1702d15d836285d694cc # v1.5.9
+        with:
+          release: "14.2"
+          usesh: true
+          copyback: true
+          prepare: |
+            pkg install -y rust pkgconf libX11 libXcursor libXrandr libXi \
+              libxkbcommon wayland mesa-libs libxcb fontconfig dejavu
+          run: |
+            set -eu
+            cargo build --release --locked --bin schematize-overdev-gui
+            cp target/release/schematize-overdev-gui ./schematize-overdev-gui-freebsd-x86_64
+            test -s ./schematize-overdev-gui-freebsd-x86_64
+      - name: publica (a janela só se compilou)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JANELA: ${{ steps.janela.outcome }}
+        run: |
+          set -euo pipefail
+          files=("$ASSET")
+          if [ "$JANELA" = "success" ]; then files+=("$ASSET_GUI"); fi
+          gh release upload "${GITHUB_REF_NAME}" "${files[@]}" --clobber
