@@ -245,15 +245,18 @@ fn motor_ausente_da_rc3_com_proximo() {
 fn sem_login_e_fim_da_escada() {
     let a = amb("login");
     a.falso("codex");
+    a.falso("claude");
     let o = a.rodar(
         &["--papel", "fallback-1", "--brief-stdin", "--json"],
         Some("x"),
         &[("FAKE_LOGIN_RC", "1")],
     );
     assert_eq!(o.status.code(), Some(3));
-    assert_eq!(json(&o)["proximo"], "fallback-cursor");
+    // fallback-cursor (cursor-agent ausente) é PULADO: vai direto ao fallback-2 (claude).
+    assert_eq!(json(&o)["proximo"], "fallback-2");
     assert!(a.argv("codex").is_none(), "não pode executar sem login");
-    // fallback-2 é claude (ausente aqui) e é o último da escada.
+    // fallback-2 é claude (ausente neste ambiente) e é o último da escada.
+    let a = amb("login-fim");
     let o = a.rodar(&["--papel", "fallback-2", "--brief-stdin", "--json"], Some("x"), &[]);
     assert_eq!(o.status.code(), Some(3));
     assert!(json(&o)["proximo"].is_null());
@@ -273,7 +276,8 @@ fn papel_inativo_da_rc3() {
     .expect("toml");
     let o = a.rodar(&["--papel", "executor", "--brief-stdin", "--json"], Some("x"), &[]);
     assert_eq!(o.status.code(), Some(3));
-    assert_eq!(json(&o)["proximo"], "fallback-1");
+    // fallback-1 (codex) e fallback-cursor não estão instalados: pula direto ao fallback-2.
+    assert_eq!(json(&o)["proximo"], "fallback-2");
     assert!(a.argv("claude").is_none());
 }
 
