@@ -117,7 +117,9 @@ pub fn archive_todos_prompt() -> String {
      prova volta a ABERTO; on-hold sem resposta = aberto. Derive um CHECKLIST exaustivo (1 item/linha, \
      cada um com COMO PROVAR, convenção de 2 níveis) agrupado por origem, grave em \
      `.schematize/overdev/CHECKLIST.md` (+ OBJETIVO.md + espelho no `<projeto>_archive/overdev/`) e \
-     reporte a contagem por fonte. NÃO pare até o checklist estar completo e consistente."
+     reporte a contagem por fonte. SAÍDA PARTICIONADA (ADR-0027): ao terminar rode \
+     `schematize-overdev checklist particionar` (partições de 25-50 itens, `pN` por prioridade, \
+     `CHECKLIST.md` vira índice) e confira com `schematize-overdev checklist check`. NÃO pare até o checklist estar completo e consistente."
         .to_string()
 }
 

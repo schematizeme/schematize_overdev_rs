@@ -112,7 +112,14 @@ pub fn slugar(titulo: &str, max: usize) -> String {
             ultimo_hifen = true;
         }
     }
-    s.truncate(max.min(SLUG_MAX));
+    let teto = max.min(SLUG_MAX);
+    if s.len() > teto {
+        // Corta em fronteira de palavra: se o char seguinte ao corte não é `-`, recua até o
+        // último `-` dentro do teto (só cai no corte seco se a 1ª palavra já passa do teto).
+        let corte =
+            if s.as_bytes()[teto] == b'-' { teto } else { s[..teto].rfind('-').unwrap_or(teto) };
+        s.truncate(corte);
+    }
     let s = s.trim_matches('-').to_string();
     if s.is_empty() {
         "geral".to_string()

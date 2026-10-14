@@ -81,6 +81,23 @@ pub(crate) fn ensure_archive_mirror(root: &Path) {
             let _ = fs::copy(&s, od.join(f));
         }
     }
+    // Espelha também as partições do checklist (ADR-0027): histórico durável do que foi feito.
+    let part = src.join("checklist");
+    if part.is_dir() {
+        let _ = fs::create_dir_all(od.join("checklist"));
+        // Limpa o espelho antigo: renomear `--completed` deixaria a cópia velha duplicada.
+        for e in fs::read_dir(od.join("checklist")).into_iter().flatten().flatten() {
+            if e.path().extension().and_then(|x| x.to_str()) == Some("md") {
+                let _ = fs::remove_file(e.path());
+            }
+        }
+        for e in fs::read_dir(&part).into_iter().flatten().flatten() {
+            let p = e.path();
+            if p.is_file() && p.extension().and_then(|x| x.to_str()) == Some("md") {
+                let _ = fs::copy(&p, od.join("checklist").join(e.file_name()));
+            }
+        }
+    }
 }
 
 /// Comando que a GUI injeta na sessão do agente acoplado pra CARREGAR os preceitos

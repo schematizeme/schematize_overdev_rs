@@ -56,8 +56,14 @@ fn fase_de(titulo: &str) -> String {
     }
 }
 
-/// **O quê:** o texto completo de uma partição (cabeçalho do ADR + corpo). **Onde:** [`escrever`].
-fn montar(nome: &Nome, titulo: &str, cabecalho: &str, depende: &[u16], corpo: &[String]) -> String {
+/// **O quê:** o texto completo de uma partição (cabeçalho do ADR + corpo). **Onde:** [`migrar`] e `editar::anexar_itens`.
+pub(super) fn montar(
+    nome: &Nome,
+    titulo: &str,
+    cabecalho: &str,
+    depende: &[u16],
+    corpo: &[String],
+) -> String {
     let fase = fase_de(titulo);
     let plano = if fase == "-" {
         "PLAN.md".to_string()

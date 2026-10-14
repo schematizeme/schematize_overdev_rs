@@ -390,3 +390,75 @@ fn parse_depende_tolera_lixo() {
     assert!(parse_depende("sem cabeçalho").is_empty());
     assert!(parse_depende("> depende: \u{0}zz, 12345 ·").is_empty());
 }
+
+/// Reabrir item de uma `--completed` pelo escritor genérico: o sufixo tem de sair.
+#[test]
+fn editar_reabre_item_de_completed_e_o_sufixo_sai() {
+    let (_r, od) = projeto("reabre");
+    grava(&od, "p2-001-a--completed.md", &itens(26, "x", "a"));
+    editar(&od, |s, _| Ok((s.replacen("- [x] a3", "- [ ] a3", 1), ()))).expect("editar");
+    let nomes: Vec<String> =
+        listar(&od).unwrap().validas.iter().map(|p| p.nome.formatar()).collect();
+    assert_eq!(nomes, vec!["p2-001-a.md".to_string()], "sufixo removido");
+    assert!(std::fs::read_to_string(od.join(INDICE)).unwrap().contains("| aberta |"));
+}
+
+/// Nenhum arquivo casa: o erro vem do 1º e NADA é escrito.
+#[test]
+fn editar_sem_match_nao_escreve() {
+    let (_r, od) = projeto("semmatch");
+    grava(&od, "p2-001-a.md", &itens(2, " ", "a"));
+    let antes = foto(&od);
+    let e = editar::<()>(&od, |_, _| Err("nenhum item".into())).expect_err("erro");
+    assert_eq!(e, "nenhum item");
+    assert_eq!(foto(&od), antes);
+}
+
+/// `caixa merge` no layout particionado: anexa à aberta de maior NNN, estoura para uma partição
+/// nova `p2-<max+1>-demandas`, e a idempotência enxerga também as `--completed`.
+#[test]
+fn caixa_merge_anexa_na_aberta_de_maior_nnn_e_cria_nova_ao_estourar() {
+    use crate::overdev::caixa::{adicionar, mesclar, organizar};
+    let (raiz, od) = projeto("caixa");
+    grava(&od, "p0-001-a.md", &itens(10, " ", "a"));
+    grava(&od, "p2-002-b.md", &itens(48, " ", "b"));
+    grava(&od, "p2-003-c--completed.md", &itens(30, "x", "c"));
+    let id = adicionar(&raiz, "demanda").unwrap();
+    organizar(&raiz, &id, (0..4).map(|i| format!("novo {i}")).collect()).unwrap();
+    assert_eq!(mesclar(&raiz).unwrap(), 4);
+    let l = listar(&od).unwrap();
+    let por_nome =
+        |n: &str| l.validas.iter().find(|p| p.nome.formatar() == n).map(|p| p.estado.total());
+    assert_eq!(por_nome("p2-002-b.md"), Some(50), "preencheu até 50");
+    assert_eq!(por_nome("p2-004-demandas.md"), Some(2), "o resto numa nova, id max+1");
+    assert_eq!(por_nome("p0-001-a.md"), Some(10), "não mexe nas outras");
+    assert!(checar(&od).unwrap().erros.is_empty());
+    assert_eq!(foto(&od).keys().filter(|k| k.contains("demandas")).count(), 1);
+    // Idempotência: a mesma entrada de novo (reprocessada) não duplica.
+    let antes = foto(&od);
+    assert_eq!(mesclar(&raiz).unwrap(), 0);
+    assert_eq!(foto(&od), antes);
+}
+
+/// Todas concluídas: o item novo vai para uma partição nova e o índice a lista.
+#[test]
+fn caixa_merge_com_tudo_concluido_cria_particao_nova() {
+    use crate::overdev::caixa::{adicionar, mesclar, organizar};
+    let (raiz, od) = projeto("caixa2");
+    grava(&od, "p1-001-a--completed.md", &itens(26, "x", "a"));
+    let id = adicionar(&raiz, "d").unwrap();
+    organizar(&raiz, &id, vec!["x".into()]).unwrap();
+    assert_eq!(mesclar(&raiz).unwrap(), 1);
+    let nomes: Vec<String> =
+        listar(&od).unwrap().validas.iter().map(|p| p.nome.formatar()).collect();
+    assert_eq!(nomes, vec!["p1-001-a--completed.md", "p2-002-demandas.md"]);
+}
+
+#[test]
+fn slug_corta_em_fronteira_de_palavra() {
+    let s = slugar("F5 · Deployer: três telas (o maior, e o único com segredo)", 40);
+    assert_eq!(s, "f5-deployer-tres-telas-o-maior-e-o-unico");
+    let s = slugar("E6 · schematize_overdev_rs — 259 unidades, e é o motor que roda isto", 40);
+    assert!(s.len() <= 40 && !s.ends_with("-o-mo") && !s.ends_with('-'), "{s}");
+    assert_eq!(slugar(&"x".repeat(60), 40).len(), 40, "palavra única maior que o teto: corte seco");
+}

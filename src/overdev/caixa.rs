@@ -205,6 +205,10 @@ pub fn mesclar(root: &Path) -> Result<usize, String> {
         // Duas coisas dependem desta leitura: o conteudo que sera reescrito e a checagem
         // de idempotencia logo abaixo. Com `unwrap_or_default`, uma falha de leitura
         // truncava o CHECKLIST.md do projeto E ainda reintroduzia itens ja fundidos.
+        let od = crate::paths::overdev_dir_at(root);
+        if super::particao::tem_particoes(&od) {
+            return mesclar_particionado(root, &od, &prontas);
+        }
         let atual = crate::nucleo::util::ler_para_modificar(&alvo)?;
         let mut saida = atual.clone();
         let mut n = 0usize;
@@ -237,6 +241,27 @@ pub fn mesclar(root: &Path) -> Result<usize, String> {
         let _ = std::fs::rename(&de, &para);
     }
     Ok(entrou)
+}
+
+/// **O quê:** a fusão no layout PARTICIONADO (ADR-0027): idempotência olhando TODAS as partições
+/// (inclusive `--completed`) e itens anexados à partição aberta de maior NNN (<50) ou a uma nova.
+/// **Onde:** [`mesclar`], já sob a trava do checklist. Devolve quantos itens entraram.
+fn mesclar_particionado(_root: &Path, od: &Path, prontas: &[Entrada]) -> Result<usize, String> {
+    let tudo = crate::paths::read_multidoc(od, "CHECKLIST.md", "checklist");
+    let mut linhas: Vec<String> = Vec::new();
+    for e in prontas {
+        if tudo.contains(&marcador(&e.id)) {
+            continue;
+        }
+        for item in &e.itens {
+            linhas.push(format!("- [ ] {item} {}", marcador(&e.id)));
+        }
+    }
+    if linhas.is_empty() {
+        return Ok(0);
+    }
+    super::particao::anexar_itens(od, &linhas)?;
+    Ok(linhas.len())
 }
 
 /// O prompt do agente que organiza as demandas.

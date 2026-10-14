@@ -13,11 +13,9 @@ pub fn park(item_substr: &str, pergunta: &str) -> Result<(), String> {
     // liberar. Sem isso a pergunta é um bilhete solto e o item fica on-hold pra sempre.
     let id = super::caixa::id_curto();
 
-    let cl = checklist();
-    super::trava::com_trava(&cl, || {
-        let s = fs::read_to_string(&cl).map_err(|e| e.to_string())?;
-        let out = super::resposta::parkear_str(&s, item_substr, pergunta, &id)?;
-        super::trava::escreve_atomico(&cl, &out)
+    // Layout-agnóstico (ADR-0027): acha o item no índice/monolito ou em qualquer partição.
+    super::particao::editar(&dir(), |s, _| {
+        super::resposta::parkear_str(s, item_substr, pergunta, &id).map(|o| (o, ()))
     })?;
 
     // O txt na base do projeto continua sendo escrito: é onde o agente foi instruído a
@@ -37,6 +35,17 @@ pub fn park(item_substr: &str, pergunta: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// **O quê:** traduz um alvo posicional GLOBAL (a numeração que a UI mostra) para o índice local
+/// do arquivo cujo offset de humanos abertos é `off`. **Onde:** [`resolver`], via `editar`.
+fn alvo_local(alvo: &super::resposta::Alvo, off: usize) -> Result<super::resposta::Alvo, String> {
+    use super::resposta::Alvo;
+    match alvo {
+        Alvo::Indice(n) if *n > off => Ok(Alvo::Indice(n - off)),
+        Alvo::Indice(n) => Err(format!("não há um {n}º item humano aberto")),
+        Alvo::Texto(t) => Ok(Alvo::Texto(t.clone())),
+    }
+}
+
 /// Resolve um item humano: responde (libera a máquina) ou recusa (cancela).
 ///
 /// Todo o ciclo ler-modificar-escrever sob a MESMA trava — o agente pode estar
@@ -46,12 +55,10 @@ pub fn resolver(
     acao: super::resposta::Acao,
     texto: &str,
 ) -> Result<(), String> {
-    let cl = checklist();
-    let r = super::trava::com_trava(&cl, || {
-        let s = fs::read_to_string(&cl).map_err(|e| e.to_string())?;
-        let r = super::resposta::resolver_str(&s, &alvo, acao, texto)?;
-        super::trava::escreve_atomico(&cl, &r.texto)?;
-        Ok(r)
+    let r = super::particao::editar(&dir(), |s, off| {
+        let local = alvo_local(&alvo, off)?;
+        let r = super::resposta::resolver_str(s, &local, acao, texto)?;
+        Ok((r.texto.clone(), r))
     })?;
 
     // A decisão também vai pro registro durável do projeto. O checklist é operacional
@@ -92,9 +99,7 @@ pub fn hold(substr: &str) -> Result<(), String> {
     // agente do overdev, a GUI, outra sessão) pode estar reescrevendo agora. Ler fora
     // da trava é o bug clássico: você decide em cima de um estado que já mudou e grava
     // por cima do trabalho alheio, sem erro nenhum. Ver `overdev::trava`.
-    let cl = checklist();
-    super::trava::com_trava(&cl, || {
-        let s = fs::read_to_string(&cl).map_err(|e| e.to_string())?;
+    super::particao::editar(&dir(), |s, _| {
         let mut done = false;
         let out: Vec<String> = s
             .lines()
@@ -112,7 +117,7 @@ pub fn hold(substr: &str) -> Result<(), String> {
             // uma janela de risco de graça.
             return Err(format!("nenhum item aberto contém '{substr}'"));
         }
-        super::trava::escreve_atomico(&cl, &out.join("\n"))
+        Ok((out.join("\n"), ()))
     })
 }
 
@@ -159,12 +164,13 @@ pub(crate) fn mark_human_str(
 pub fn human_done(substr: Option<&str>, index: Option<usize>) -> Result<(), String> {
     // Ler e escrever sob a MESMA trava — ver a nota em `hold`. O índice do item humano
     // é posicional: decidir com uma leitura velha fecharia o item errado.
-    let cl = checklist();
-    let txt = super::trava::com_trava(&cl, || {
-        let s = fs::read_to_string(&cl).map_err(|e| e.to_string())?;
-        let (out, txt) = mark_human_str(&s, substr, index)?;
-        super::trava::escreve_atomico(&cl, &out)?;
-        Ok(txt)
+    let txt = super::particao::editar(&dir(), |s, off| {
+        let local = match index {
+            Some(n) if n > off => Some(n - off),
+            Some(n) => return Err(format!("não há {n}º item humano aberto (- [H ])")),
+            None => None,
+        };
+        mark_human_str(s, substr, local)
     })?;
     // Versiona a mudança no DB local (best-effort). Fora da trava: é I/O em outro
     // arquivo e não pode segurar o checklist.

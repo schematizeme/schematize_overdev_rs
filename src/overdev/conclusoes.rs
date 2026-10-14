@@ -66,10 +66,12 @@ pub(crate) fn read_completions_map(root: &Path) -> std::collections::BTreeMap<St
 /// Best-effort: qualquer erro de IO é ignorado (nunca panica).
 pub fn record_completions(root: &Path) -> Vec<Completion> {
     let checklist_path = dir_at(root).join("CHECKLIST.md");
-    let content = match fs::read_to_string(&checklist_path) {
-        Ok(c) => c,
-        Err(_) => return sorted_completions(read_completions_map(root)),
-    };
+    // Lê o checklist INTEIRO (índice + partições, inclusive `--completed`): as conclusões são
+    // histórico, e uma partição fechada não pode apagar o log de quando cada item fechou.
+    let content = crate::paths::read_multidoc(&dir_at(root), "CHECKLIST.md", "checklist");
+    if content.is_empty() && !checklist_path.exists() {
+        return sorted_completions(read_completions_map(root));
+    }
     let done_texts: Vec<String> = content.lines().filter_map(done_item_text).collect();
 
     let cf = completions_file(root);

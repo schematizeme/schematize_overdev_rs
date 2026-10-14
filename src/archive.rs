@@ -160,7 +160,8 @@ fn write_context_agent(root: &Path, arch: &Path) -> Result<String, String> {
     let objetivo = read("OBJETIVO.md");
     let decisoes = read("DECISOES.md");
     let plano = read("PLAN.md");
-    let checklist = read("CHECKLIST.md");
+    // Só os afazeres (ADR-0027): as partições `--completed` não entram no contexto portátil.
+    let checklist = crate::paths::read_multidoc_abertos(&od, "CHECKLIST.md", "checklist");
     let abertos: Vec<&str> = checklist
         .lines()
         .filter(|l| {
