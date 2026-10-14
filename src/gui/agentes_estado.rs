@@ -70,6 +70,26 @@ pub fn nome_valido(n: &str) -> bool {
         && n.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
+/// **O quê:** a ordem de exibição dos papéis: `principal`, depois a escada (na ordem dela), depois
+/// os alvos do roteamento (visual, imagem, …) e por fim o resto em ordem alfabética; sem repetir
+/// e só com papéis que existem. **Onde:** a tabela de papéis da aba.
+pub fn ordem_dos_papeis(a: &Agentes) -> Vec<String> {
+    let mut v: Vec<String> = Vec::new();
+    let candidatos = std::iter::once(&"principal".to_string())
+        .chain(a.escada.iter())
+        .cloned()
+        .chain(["visual", "imagem"].iter().filter_map(|t| a.roteamento.get(*t).cloned()))
+        .chain(a.roteamento.values().cloned())
+        .chain(a.papeis.keys().cloned())
+        .collect::<Vec<_>>();
+    for n in candidatos {
+        if a.papeis.contains_key(&n) && !v.contains(&n) {
+            v.push(n);
+        }
+    }
+    v
+}
+
 /// O estado da aba. `Default` = ainda não carregado.
 #[derive(Debug, Clone)]
 pub struct EstadoAgentes {
@@ -403,6 +423,19 @@ mod tests {
         assert_eq!((p.motor, p.modelo.as_str()), (Motor::Cursor, "auto"));
         e.aplicar(AgMsg::Motor("executor".into(), "xyz".into()));
         assert!(e.erro.contains("desconhecido"));
+    }
+
+    /// `principal` primeiro, escada, roteamento, resto alfabético, sem duplicar.
+    #[test]
+    fn ordena_os_papeis() {
+        let mut a = Agentes::padrao();
+        a.escada = vec!["fallback-2".into(), "executor".into(), "fallback-2".into()];
+        a.roteamento.insert("imagem".into(), "complementar".into());
+        a.roteamento.insert("visual".into(), "visual".into());
+        let o = ordem_dos_papeis(&a);
+        assert_eq!(&o[..5], ["principal", "fallback-2", "executor", "visual", "complementar"]);
+        assert_eq!(o.len(), a.papeis.len());
+        assert_eq!(&o[5..], ["fallback-1", "fallback-cursor", "imagem", "trivial"]);
     }
 
     /// O resultado de um motor é registrado no lugar certo.

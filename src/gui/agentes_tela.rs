@@ -7,7 +7,7 @@
 //! ([`App::ver_agentes`]). `disponibilidade` cria processos (`codex login status`): roda SEMPRE em
 //! `Task::perform`, nunca no `view`/`update`.
 
-use super::agentes_estado::{sugestoes, AgMsg, EscopoAg, EstadoAgentes};
+use super::agentes_estado::{ordem_dos_papeis, sugestoes, AgMsg, EscopoAg, EstadoAgentes};
 use super::estado::App;
 use super::msg::Msg;
 use super::tema;
@@ -143,8 +143,10 @@ impl App {
         }
         col = col.push(status(c, &x.aviso.texto, x.aviso.erro, 12.0));
         col = col.push(negrito("Papéis", 13.0, c.texto));
-        for (nome, p) in &x.editado.papeis {
-            col = col.push(self.linha_do_papel(nome, p));
+        for nome in ordem_dos_papeis(&x.editado) {
+            if let Some(p) = x.editado.papeis.get(&nome) {
+                col = col.push(self.linha_do_papel(nome, p));
+            }
         }
         col = col.push(self.novo_papel());
         col = col.push(self.bloco_escada());
@@ -228,9 +230,9 @@ impl App {
 
     /// **O quê:** a linha de um papel (nome, motor, modelo, ativo, remover + descrição).
     /// **Onde:** [`App::ver_agentes`].
-    fn linha_do_papel<'a>(&'a self, nome: &'a str, p: &'a Papel) -> Element<'a, Msg> {
+    fn linha_do_papel<'a>(&'a self, nome: String, p: &'a Papel) -> Element<'a, Msg> {
         let c = self.cores;
-        let n = nome.to_string();
+        let n = nome.clone();
         let motores: Vec<String> = Motor::TODOS.iter().map(|m| m.nome().to_string()).collect();
         let sug = sugestoes(p.motor);
         let escolhido = sug.contains(&p.modelo).then(|| p.modelo.clone());
@@ -259,7 +261,7 @@ impl App {
             toggler(p.ativo).on_toggle(move |v| Msg::Agentes(AgMsg::Ativo(n4.clone(), v))).size(18);
         let remover = (nome != "principal").then(|| Msg::Agentes(AgMsg::RemoverPapel(n5.clone())));
         let topo = row![
-            negrito(nome, 13.0, c.texto).width(120),
+            negrito(nome.clone(), 13.0, c.texto).width(120),
             motor,
             modelo,
             sugerido,
