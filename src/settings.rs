@@ -3,18 +3,25 @@
 //! AskUserQuestion) apontando pro próprio binário. Preserva o resto do settings.
 //! Onde: chamado por `schematize overdev enable|disable`.
 
-use crate::hooks::Hooks;
+use crate::hooks::{GrupoHook, Hooks};
 use crate::nucleo::caminhos::settings_path;
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Um grupo de hooks contém um comando com este trecho?
-fn group_has(group: &Value, needle: &str) -> bool {
+/// Um grupo de hooks contém um comando que satisfaz `pred`?
+fn group_has(group: &Value, pred: &dyn Fn(&str) -> bool) -> bool {
     group.get("hooks").and_then(|h| h.as_array()).is_some_and(|arr| {
-        arr.iter()
-            .any(|h| h.get("command").and_then(|c| c.as_str()).is_some_and(|c| c.contains(needle)))
+        arr.iter().any(|h| h.get("command").and_then(|c| c.as_str()).is_some_and(pred))
     })
+}
+
+/// **O quê:** o grupo é do `grupo` segundo a plataforma (`Hooks::eh_nosso`)?
+///
+/// **Onde:** liga/desliga/diagnóstico dos hooks. Quem reconhece é o `Hooks`: o Windows emite o
+/// comando com aspas e `.exe`, e a marca textual do Unix não casaria.
+fn do_grupo(group: &Value, h: &dyn Hooks, grupo: GrupoHook) -> bool {
+    group_has(group, &|c| h.eh_nosso(c, grupo))
 }
 
 /// Lê o settings.json como objeto (ou objeto vazio se não existir/inválido).
@@ -35,7 +42,7 @@ fn save(v: &Value) -> Result<(), String> {
 }
 
 /// Garante que `hooks[event]` (array) tenha o grupo `group` se ainda não houver `needle`.
-fn ensure_group(root: &mut Value, event: &str, needle: &str, group: Value) {
+fn ensure_group(root: &mut Value, event: &str, pred: &dyn Fn(&str) -> bool, group: Value) {
     // Nada aqui pode ser `unwrap`: o settings.json é de QUEM USA, e um `"hooks": "x"`
     // (string onde esperamos objeto) fazia o CLI panicar em vez de tratar. Arquivo alheio
     // malformado é entrada hostil como qualquer outra — corrigimos o nó e seguimos.
@@ -54,7 +61,7 @@ fn ensure_group(root: &mut Value, event: &str, needle: &str, group: Value) {
     // ATUALIZA o comando em vez de só adicionar-se-ausente. Sem isto, um hook antigo com caminho
     // absoluto stale (ex.: `/usr/bin/schematize` de um pacote removido) nunca era trocado pelo
     // resolvedor resiliente ao re-rodar `overdev enable`.
-    arr.retain(|g| !group_has(g, needle));
+    arr.retain(|g| !group_has(g, pred));
     arr.push(group);
 }
 
@@ -70,16 +77,16 @@ fn ensure_group(root: &mut Value, event: &str, needle: &str, group: Value) {
 /// contém esse texto (na lista de fallback, `exec "$c" overdev check`), então quem tem o hook
 /// antigo e quem tem o novo são os dois reconhecidos. Reconhecer só o novo faria o `disable`
 /// deixar o grupo antigo para trás — ligado e órfão.
-const MARCAS: [(&str, &str, &str); 2] =
-    [("Stop", "overdev check", "check"), ("PreToolUse", "overdev guard", "guard")];
+const GRUPOS: [(&str, GrupoHook, &str); 2] =
+    [("Stop", GrupoHook::Check, "check"), ("PreToolUse", GrupoHook::Guard, "guard")];
 
 /// Os hooks do overdev estão registrados no settings.json?
-pub fn overdev_enabled() -> bool {
+pub fn overdev_enabled(h: &dyn Hooks) -> bool {
     load()
         .get("hooks")
         .and_then(|h| h.get("Stop"))
         .and_then(|a| a.as_array())
-        .is_some_and(|arr| arr.iter().any(|g| group_has(g, MARCAS[0].1)))
+        .is_some_and(|arr| arr.iter().any(|g| do_grupo(g, h, GrupoHook::Check)))
 }
 
 /// O settings.json existe e é JSON válido? (None = não existe; Some(false) = inválido.)
@@ -111,13 +118,13 @@ fn aplica_hooks(root: &mut Value, h: &dyn Hooks) {
     ensure_group(
         root,
         "Stop",
-        "overdev check",
+        &|c| h.eh_nosso(c, GrupoHook::Check),
         json!({ "hooks": [ { "type": "command", "command": stop_cmd } ] }),
     );
     ensure_group(
         root,
         "PreToolUse",
-        "overdev guard",
+        &|c| h.eh_nosso(c, GrupoHook::Guard),
         json!({ "matcher": "AskUserQuestion", "hooks": [ { "type": "command", "command": guard_cmd } ] }),
     );
 }
@@ -140,7 +147,7 @@ pub fn enable_vps(h: &dyn Hooks) -> Result<(), String> {
     ensure_group(
         &mut root,
         "PreToolUse",
-        "vps guard",
+        &|c| h.eh_nosso(c, GrupoHook::VpsGuard),
         json!({ "matcher": "*", "hooks": [ { "type": "command", "command": cmd } ] }),
     );
     save(&root)
@@ -149,12 +156,12 @@ pub fn enable_vps(h: &dyn Hooks) -> Result<(), String> {
 /// Remove o hook do gestor de VPS, sem tocar nos do overdev nem em hook alheio.
 ///
 /// **Onde:** `schematize vps hooks --off`.
-pub fn disable_vps() -> Result<(), String> {
+pub fn disable_vps(h: &dyn Hooks) -> Result<(), String> {
     let mut root = load();
     if let Some(arr) =
         root.get_mut("hooks").and_then(|h| h.get_mut("PreToolUse")).and_then(|a| a.as_array_mut())
     {
-        arr.retain(|g| !group_has(g, "vps guard"));
+        arr.retain(|g| !do_grupo(g, h, GrupoHook::VpsGuard));
     }
     save(&root)
 }
@@ -219,12 +226,12 @@ pub fn tools_permitidas(nomes: &[String]) -> usize {
 /// O hook do gestor de VPS está registrado?
 ///
 /// **Onde:** `schematize vps hooks` (sem flag, mostra o estado) e o `doctor`.
-pub fn vps_hook_enabled() -> bool {
+pub fn vps_hook_enabled(h: &dyn Hooks) -> bool {
     load()
         .get("hooks")
         .and_then(|h| h.get("PreToolUse"))
         .and_then(|a| a.as_array())
-        .is_some_and(|arr| arr.iter().any(|g| group_has(g, "vps guard")))
+        .is_some_and(|arr| arr.iter().any(|g| do_grupo(g, h, GrupoHook::VpsGuard)))
 }
 
 /// Os hooks registrados batem com o comando que ESTA versão gravaria?
@@ -242,7 +249,7 @@ pub fn hooks_atualizados(h: &dyn Hooks) -> bool {
 ///
 /// **Onde:** `hooks_atualizados` e os testes.
 fn hooks_atualizados_em(root: &Value, h: &dyn Hooks) -> bool {
-    MARCAS.iter().all(|(event, _marca, sub)| {
+    GRUPOS.iter().all(|(event, _grupo, sub)| {
         let alvo = h.comando(sub);
         root.get("hooks").and_then(|h| h.get(event)).and_then(|a| a.as_array()).is_some_and(|arr| {
             arr.iter().any(|g| {
@@ -262,7 +269,7 @@ fn hooks_atualizados_em(root: &Value, h: &dyn Hooks) -> bool {
 /// com frequência (o agente) e do `doctor`. Devolve `true` se regravou.
 /// Não liga hook em quem não pediu: overdev desligado → não faz nada.
 pub fn refresh_hooks(h: &dyn Hooks) -> Result<bool, String> {
-    if !overdev_enabled() || hooks_atualizados(h) {
+    if !overdev_enabled(h) || hooks_atualizados(h) {
         return Ok(false);
     }
     enable(h)?;
@@ -345,7 +352,7 @@ pub fn repara_hooks_em(hooks: &dyn Hooks, arquivo: &Path) -> Result<bool, String
         return Ok(false);
     };
     let mut mexeu = false;
-    for (event, _marca, sub) in MARCAS {
+    for (event, tipo, sub) in GRUPOS {
         let alvo = hooks.comando(sub);
         let Some(arr) =
             root.get_mut("hooks").and_then(|h| h.get_mut(event)).and_then(|a| a.as_array_mut())
@@ -362,7 +369,9 @@ pub fn repara_hooks_em(hooks: &dyn Hooks, arquivo: &Path) -> Result<bool, String
                 };
                 // Só mexemos em hook DO OVERDEV: ou cita o subcomando, ou é o script
                 // legado da skill. Hook de terceiro no mesmo settings.json não é nosso.
-                let nosso = cmd.contains(sub) || cmd.contains("overdev-stop.sh");
+                let nosso = hooks.eh_nosso(cmd, tipo)
+                    || cmd.contains(sub)
+                    || cmd.contains("overdev-stop.sh");
                 if !nosso || cmd == alvo || !comando_quebrado(hooks, cmd) {
                     continue;
                 }
@@ -391,12 +400,12 @@ pub fn arquivos_de_settings(projeto: Option<&Path>) -> Vec<PathBuf> {
 }
 
 /// Remove os grupos de hook do overdev (Stop/PreToolUse) sem tocar no resto.
-pub fn disable() -> Result<(), String> {
+pub fn disable(h: &dyn Hooks) -> Result<(), String> {
     let mut root = load();
-    if let Some(hooks) = root.get_mut("hooks").and_then(|h| h.as_object_mut()) {
-        for (event, needle, _sub) in MARCAS {
+    if let Some(hooks) = root.get_mut("hooks").and_then(|x| x.as_object_mut()) {
+        for (event, grupo, _sub) in GRUPOS {
             if let Some(arr) = hooks.get_mut(event).and_then(|a| a.as_array_mut()) {
-                arr.retain(|g| !group_has(g, needle));
+                arr.retain(|g| !do_grupo(g, h, grupo));
             }
         }
     }
@@ -431,7 +440,7 @@ mod tests {
                 .get("hooks")
                 .and_then(|h| h.get("Stop"))
                 .and_then(|a| a.as_array())
-                .is_some_and(|arr| arr.iter().any(|g| group_has(g, MARCAS[0].1))),
+                .is_some_and(|arr| arr.iter().any(|g| do_grupo(g, H, GrupoHook::Check))),
             "o hook velho ainda casa como 'ligado' — por isso o enable pulava"
         );
         // Mas NÃO é o comando desta versão: é isso que passa a ser detectado.
@@ -657,7 +666,7 @@ mod tests {
         assert_ne!(novo_check, HOOK_ANTIGO_CHECK, "a string mudou");
         for c in [HOOK_ANTIGO_CHECK, novo_check.as_str()] {
             let g = json!({ "hooks": [ { "type": "command", "command": c } ] });
-            assert!(group_has(&g, MARCAS[0].1), "reconhecido como nosso: {c}");
+            assert!(do_grupo(&g, H, GrupoHook::Check), "reconhecido como nosso: {c}");
         }
         let mut root = json!({ "hooks": {
             "Stop": [
@@ -669,9 +678,12 @@ mod tests {
         aplica_hooks(&mut root, H);
         assert!(hooks_atualizados_em(&root, H), "migrou para o novo");
         let stop = root["hooks"]["Stop"].as_array().unwrap();
-        let nossos = stop.iter().filter(|g| group_has(g, MARCAS[0].1)).count();
+        let nossos = stop.iter().filter(|g| do_grupo(g, H, GrupoHook::Check)).count();
         assert_eq!(nossos, 1, "sem duplicar: {stop:?}");
-        assert!(stop.iter().any(|g| group_has(g, "/alheio.sh")), "hook alheio preservado");
+        assert!(
+            stop.iter().any(|g| group_has(g, &|c| c.contains("/alheio.sh"))),
+            "hook alheio preservado"
+        );
         // Idempotente: reaplicar não muda nada.
         let antes = root.clone();
         aplica_hooks(&mut root, H);
@@ -711,7 +723,7 @@ mod tests {
             r#"{}"#,
         ] {
             let mut v: Value = serde_json::from_str(bruto).expect("fixture é json válido");
-            ensure_group(&mut v, "Stop", "overdev check", json!({"hooks": []}));
+            ensure_group(&mut v, "Stop", &|c| c.contains("overdev check"), json!({"hooks": []}));
             // O contrato é sobreviver e deixar a estrutura utilizável.
             assert!(
                 v["hooks"]["Stop"].is_array(),
@@ -725,7 +737,7 @@ mod tests {
     #[test]
     fn raiz_que_nao_e_objeto_nao_derruba() {
         let mut v: Value = serde_json::from_str("[]").unwrap();
-        ensure_group(&mut v, "Stop", "overdev check", json!({"hooks": []}));
+        ensure_group(&mut v, "Stop", &|c| c.contains("overdev check"), json!({"hooks": []}));
         assert!(v.is_array(), "sem objeto pra mexer, sai sem tocar em nada");
     }
 }

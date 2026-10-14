@@ -30,13 +30,7 @@ pub fn claude_path() -> Option<std::path::PathBuf> {
 /// `~/.profile`/`~/.bashrc`. Checar aqui (além do `$PATH`) é o que faz o app
 /// achar o `claude` mesmo quando foi aberto pelo menu de apps e não pelo terminal.
 pub(crate) fn fallback_bin_dirs() -> Vec<std::path::PathBuf> {
-    let h = crate::nucleo::util::home();
-    let mut dirs = vec![h.join(".local/bin"), h.join(".claude/local"), h.join(".cargo/bin")];
-    dirs.push(std::path::PathBuf::from("/usr/local/bin"));
-    dirs.push(std::path::PathBuf::from("/usr/bin"));
-    dirs.push(std::path::PathBuf::from("/opt/homebrew/bin"));
-    dirs.push(std::path::PathBuf::from("/usr/local/opt/openssh/bin"));
-    dirs
+    crate::ambiente::plat().caminhos.dirs_fallback_bin(&crate::nucleo::util::home())
 }
 
 /// Resolve o caminho ABSOLUTO de `bin`: primeiro nos diretórios do `$PATH` do

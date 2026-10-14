@@ -8,6 +8,19 @@
 //! `schematize_windows_rs` injeta o dele (caminho absoluto do `.exe` entre aspas) via
 //! [`crate::cli::run`] e [`crate::gui::run`] (ADR-0026).
 
+/// Os grupos de hook que o overdev registra no `settings.json`.
+///
+/// **Onde:** `Hooks::eh_nosso` e `settings` (liga/desliga/diagnóstico).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GrupoHook {
+    /// `Stop`: `overdev check`.
+    Check,
+    /// `PreToolUse` (AskUserQuestion): `overdev guard`.
+    Guard,
+    /// `PreToolUse` (todas as tools): `vps guard` do gestor de VPS.
+    VpsGuard,
+}
+
 /// Como uma plataforma escreve e reconhece o comando de um hook do Claude Code.
 ///
 /// **Onde:** `settings::{enable, enable_vps, hooks_atualizados, refresh_hooks, repara_hooks_em}`.
@@ -25,6 +38,14 @@ pub trait Hooks: Send + Sync {
     ///
     /// **Onde:** `settings::comando_quebrado`.
     fn reconhece(&self, cmd: &str) -> bool;
+
+    /// **O quê:** `cmd` (como está no `settings.json`) é um comando do `grupo` — de QUALQUER
+    /// versão (o antigo e o atual têm de casar, senão `disable` deixa o grupo velho órfão e
+    /// `enable` duplica)? Unix: o comando contém `overdev check`/`overdev guard`/`vps guard`;
+    /// o Windows reconhece o `"C:\…\schematize-overdev.exe" check` entre aspas.
+    ///
+    /// **Onde:** `settings` (enable/disable/diagnóstico/reparo).
+    fn eh_nosso(&self, cmd: &str, grupo: GrupoHook) -> bool;
 }
 
 /// Hooks Unix (linux/freebsd/macos): o one-liner POSIX que procura o binário em runtime.
@@ -43,6 +64,16 @@ impl Hooks for HooksUnix {
     /// resolvedor Unix não sabe julgá-lo. **Onde:** `settings::comando_quebrado`.
     fn reconhece(&self, cmd: &str) -> bool {
         !cmd.contains(":\\")
+    }
+
+    /// **O quê:** a marca textual de sempre (`overdev check`, `overdev guard`, `vps guard`) como
+    /// substring. **Onde:** `settings`.
+    fn eh_nosso(&self, cmd: &str, grupo: GrupoHook) -> bool {
+        cmd.contains(match grupo {
+            GrupoHook::Check => "overdev check",
+            GrupoHook::Guard => "overdev guard",
+            GrupoHook::VpsGuard => "vps guard",
+        })
     }
 }
 
@@ -94,6 +125,17 @@ mod tests {
         let c = HooksUnix.comando("check");
         assert!(c.ends_with("exit 0"), "{c}");
         assert!(!c.contains('\n'), "uma linha só: {c}");
+    }
+
+    /// A marca Unix casa o comando antigo, o atual e só o grupo certo.
+    #[test]
+    fn eh_nosso_por_marca_textual() {
+        let c = HooksUnix.comando("check");
+        assert!(HooksUnix.eh_nosso(&c, GrupoHook::Check));
+        assert!(!HooksUnix.eh_nosso(&c, GrupoHook::Guard));
+        assert!(HooksUnix.eh_nosso("/usr/bin/schematize overdev guard", GrupoHook::Guard));
+        assert!(HooksUnix.eh_nosso("x vps guard", GrupoHook::VpsGuard));
+        assert!(!HooksUnix.eh_nosso("bash /alheio.sh", GrupoHook::Check));
     }
 
     /// Caminho de unidade do Windows não é formato Unix; o resto é.

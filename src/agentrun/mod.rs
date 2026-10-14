@@ -33,7 +33,7 @@ mod pathenv;
 mod prompt_agentes;
 mod prompts;
 pub use lancador::*;
-pub use pathenv::{extras_unix, montar_path};
+pub use pathenv::{montar_path, path_do_filho};
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 pub use prompts::*;
 use std::io::{Read, Write};
@@ -132,10 +132,9 @@ impl AgentRunner for ClaudeRunner {
         if std::env::var_os("TERM").is_none() {
             cmd.env("TERM", "xterm-256color");
         }
-        if let Some(home) = std::env::var_os("HOME") {
-            let home = home.to_string_lossy().to_string();
+        if let Some(home) = schematize_plataforma::bin::home() {
             let base = std::env::var("PATH").unwrap_or_default();
-            cmd.env("PATH", montar_path(':', &base, &extras_unix(&home)));
+            cmd.env("PATH", path_do_filho(&base, &home));
         }
         let child =
             pair.slave.spawn_command(cmd).map_err(|e| format!("falha ao spawnar `claude`: {e}"))?;

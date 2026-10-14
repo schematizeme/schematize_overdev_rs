@@ -278,7 +278,7 @@ pub fn hooks(repair: bool, json: bool) -> Result<(), String> {
     if repair {
         settings::refresh_hooks(hooks)?;
     }
-    let ligados = settings::overdev_enabled();
+    let ligados = settings::overdev_enabled(hooks);
     let em_dia = settings::hooks_atualizados(hooks);
     let valido = settings::settings_valid();
     // **`None` é AUSENTE, e não inválido.** Um `settings.json` que não existe é o caso de quem

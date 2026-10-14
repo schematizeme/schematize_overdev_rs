@@ -225,7 +225,7 @@ pub fn executar(sub: Cmd) -> Result<(), String> {
     match sub {
 
         Cmd::Enable => crate::settings::enable(crate::ambiente::hooks()),
-        Cmd::Disable => crate::settings::disable(),
+        Cmd::Disable => crate::settings::disable(crate::ambiente::hooks()),
         Cmd::Start { objetivo, max } => crate::overdev::start(&objetivo.join(" "), max),
         Cmd::Terminal { prompt, receita, json } => {
             crate::cli::grafo::terminal(prompt.as_deref(), receita.as_deref(), json)

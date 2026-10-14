@@ -288,7 +288,7 @@ pub fn enable() -> Result<(), String> {
 
 /// Desliga os hooks do overdev do settings.json.
 pub fn disable() -> Result<(), String> {
-    settings::disable()?;
+    settings::disable(crate::ambiente::hooks())?;
     println!("overdev desabilitado (hooks removidos do settings.json).");
     Ok(())
 }
