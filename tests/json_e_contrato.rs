@@ -34,6 +34,7 @@ fn rodar_json(proj: &Path, args: &[&str]) -> Value {
         .args(args)
         .current_dir(proj)
         .env("HOME", proj)
+        .env("SCHEMATIZE_SEM_MARKET", "1")
         .output()
         .expect("rodar o binário");
     let out = String::from_utf8_lossy(&o.stdout).to_string();
@@ -257,8 +258,13 @@ fn o_shape_do_historico_e_contrato() {
     assert_eq!(chaves(&v), ["snapshots"]);
     assert!(v["snapshots"].as_array().expect("lista").is_empty());
     com_run(&p);
-    let o =
-        Command::new(BIN).arg("snapshot").current_dir(&p).env("HOME", &p).output().expect("snap");
+    let o = Command::new(BIN)
+        .arg("snapshot")
+        .current_dir(&p)
+        .env("HOME", &p)
+        .env("SCHEMATIZE_SEM_MARKET", "1")
+        .output()
+        .expect("snap");
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     let v = rodar_json(&p, &["history", "--json"]);
     let s = &v["snapshots"][0];

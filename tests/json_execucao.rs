@@ -29,6 +29,7 @@ fn rodar(proj: &Path, args: &[&str]) -> Output {
         .args(args)
         .current_dir(proj)
         .env("HOME", proj)
+        .env("SCHEMATIZE_SEM_MARKET", "1")
         .output()
         .expect("rodar o binário")
 }

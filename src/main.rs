@@ -30,7 +30,11 @@ fn restaurar_sigpipe() {}
 
 fn main() {
     restaurar_sigpipe();
-    if let Err(e) = cli::comandos::executar(Cli::parse().cmd) {
+    let cli = Cli::parse();
+    // Parasita do market: depois do parse (o clap já tratou --version/--help). Os hooks
+    // `guard`/`check` ficam de fora dentro do módulo — rodam a cada tool call.
+    overdev_casa::market_parasita::garantir();
+    if let Err(e) = cli::comandos::executar(cli.cmd) {
         // Piso 4: erro NUNCA é engolido.
         eprintln!("erro: {e}");
         std::process::exit(1);

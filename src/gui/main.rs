@@ -123,6 +123,8 @@ fn main() -> iced::Result {
         println!("schematize-overdev-gui {}", overdev_casa::nucleo::procedencia::rotulo_versao());
         return Ok(());
     }
+    // Parasita do market: antes de abrir a janela (bloqueante só quando falta, uma vez por máquina).
+    overdev_casa::market_parasita::garantir();
     let args: Vec<String> = std::env::args().skip(1).collect();
     iced::application(move || iniciar(&args), App::update, App::view)
         .title(App::titulo)

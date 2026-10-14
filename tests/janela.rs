@@ -18,6 +18,7 @@ const GUI: &str = env!("CARGO_BIN_EXE_schematize-overdev-gui");
 fn rodar_sem_display(args: &[&str], limite: Duration) -> Option<(bool, String)> {
     let mut filho = Command::new(GUI)
         .args(args)
+        .env("SCHEMATIZE_SEM_MARKET", "1")
         .env_remove("DISPLAY")
         .env_remove("WAYLAND_DISPLAY")
         .stdout(Stdio::piped())
