@@ -122,7 +122,8 @@ fn prompt_da_receita(nome: &str, raiz: &Path) -> Result<String, String> {
     match nome {
         "archive-todos" => Ok(agentrun::archive_todos_prompt()),
         "reindex" => Ok(agentrun::reindex_prompt()),
-        "overdev" => Ok(agentrun::overdev_prompt(
+        "overdev" => Ok(agentrun::overdev_prompt_em(
+            raiz,
             &overdev_casa::overdev::progresso::objetivo_at(raiz).unwrap_or_default(),
         )),
         outra => Err(format!(

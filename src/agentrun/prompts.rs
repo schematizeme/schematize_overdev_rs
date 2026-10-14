@@ -7,6 +7,7 @@
 //! Separado porque é o único pedaço do `agentrun` sem I/O: muda por razão de PRODUTO (o
 //! texto que o agente lê), não por razão de plataforma.
 
+use super::prompt_agentes::trecho_agentes;
 use super::*;
 
 /// Quantos itens abertos, no máximo, entram na mensagem de nudge.
@@ -43,10 +44,23 @@ pub fn nudge_message(open_items: &[String]) -> String {
 /// É linguagem NATURAL — não o slash `/eng-overdev` (que não dispara como arg). Dá o método do
 /// overdev direto e conta com o Stop hook pra impor o "não pare". PURA.
 pub fn overdev_prompt(objetivo: &str) -> String {
+    let projeto = std::env::current_dir().ok();
+    overdev_prompt_com(objetivo, &crate::agentes::carregar_ou_padrao(projeto.as_deref()))
+}
+
+/// Como [`overdev_prompt`], com a config de agentes do `projeto` (global + override dele).
+/// Onde: terminal externo e sessão acoplada, que já sabem a raiz do projeto.
+pub fn overdev_prompt_em(projeto: &Path, objetivo: &str) -> String {
+    overdev_prompt_com(objetivo, &crate::agentes::carregar_ou_padrao(Some(projeto)))
+}
+
+/// O prompt do overdev com a estrutura de agentes `ag` injetada (tabela, escada, regras). PURA.
+pub fn overdev_prompt_com(objetivo: &str, ag: &crate::agentes::Agentes) -> String {
+    let agentes = trecho_agentes(ag);
     let o = objetivo.trim();
     let alvo = if o.is_empty() { String::new() } else { format!(" O objetivo é: {o}.") };
     format!(
-        "Modo OVERDEV neste projeto.{alvo}\n\n\
+        "Modo OVERDEV neste projeto.{alvo}\n\n{agentes}\
          PASSO 0 — COMPLETUDE DO CHECKLIST, ANTES DE TICAR QUALQUER COISA. Leia \
          `.schematize/overdev/CHECKLIST.md` (e `OBJETIVO.md`, `PLAN.md`, `DECISOES.md` se existirem) e \
          responda: ele cobre o objetivo INTEIRO, ou só a primeira fase? Se estiver PARCIAL/FASEADO — \

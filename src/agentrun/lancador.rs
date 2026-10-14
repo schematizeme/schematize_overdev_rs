@@ -142,6 +142,12 @@ pub(crate) fn pre_trust_project(project: &Path) {
     }
 }
 
+/// **O quê:** `s` entre aspas simples para o bash (`'` vira `'\''`). **Onde:** o `--model` do
+/// wrapper — o modelo vem de um arquivo editável, então nunca entra cru no script.
+pub(crate) fn aspas_sh(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
 /// Dispara o overdev num TERMINAL EXTERNO (processo próprio do `claude`, RAM dele — NÃO carrega o
 /// load dentro do app; some o inchaço tipo VSCode). O app só MONITORA o `.overdev/` depois. O
 /// "não pare" é imposto pelo Stop hook do overdev (não precisa injetar `continue`).
@@ -150,7 +156,7 @@ pub(crate) fn pre_trust_project(project: &Path) {
 /// a pasta e abre o 1º terminal disponível rodando `claude --dangerously-skip-permissions "<prompt>"`.
 /// Devolve o nome do terminal usado. Erro se `claude` ou nenhum terminal estiver no PATH.
 pub fn launch_in_terminal(project: &Path, objetivo: &str) -> Result<String, String> {
-    let term = launch_prompt_in_terminal(project, &overdev_prompt(objetivo))?;
+    let term = launch_prompt_in_terminal(project, &overdev_prompt_em(project, objetivo))?;
     // Rede de segurança: o Stop hook só age quando o agente TENTA encerrar o turno; ele não
     // pode nada se o processo simplesmente morre (contexto, compactação, crash, janela
     // fechada). O supervisor cobre isso relançando enquanto houver `- [ ]`. Sobe destacado e
@@ -363,6 +369,7 @@ pub fn launch_prompt_in_terminal(project: &Path, prompt: &str) -> Result<String,
         "o CLI `claude` não está no PATH — instale o Claude Code (claude.ai/code).".to_string()
     })?;
     pre_trust_project(project);
+    let modelo = aspas_sh(crate::agentes::carregar_ou_padrao(Some(project)).modelo_principal());
     // Control-plane operacional: `.schematize/overdev/` (cai no `.overdev/` legado se o projeto
     // ainda estiver no layout antigo — resolvido pelo módulo `paths`).
     let od = crate::paths::overdev_dir_at(project);
@@ -374,7 +381,7 @@ pub fn launch_prompt_in_terminal(project: &Path, prompt: &str) -> Result<String,
     // dirs de usuário (o próprio claude, node e ripgrep resolvem daqui) e chamamos o claude pelo
     // caminho ABSOLUTO — assim funciona mesmo com o app aberto pelo lançador do desktop.
     let sh = format!(
-        "#!/usr/bin/env bash\nexport PATH=\"$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.claude/local:$PATH\"\ncd {proj:?} || exit 1\n{claude:?} --dangerously-skip-permissions \"$(cat {pf:?})\"\necho\nread -rp '[overdev encerrado — Enter para fechar] '\n",
+        "#!/usr/bin/env bash\nexport PATH=\"$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.claude/local:$PATH\"\ncd {proj:?} || exit 1\n{claude:?} --dangerously-skip-permissions --model {modelo} \"$(cat {pf:?})\"\necho\nread -rp '[overdev encerrado — Enter para fechar] '\n",
         proj = project,
         claude = claude,
         pf = promptfile,

@@ -5,6 +5,7 @@
 pub mod args;
 pub mod caixa;
 pub mod comandos;
+pub mod delegar;
 pub mod desktop;
 pub mod grafo;
 pub mod leituras;

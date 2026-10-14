@@ -298,6 +298,9 @@ pub fn executar(sub: Cmd) -> Result<(), String> {
         Cmd::Review { alvo, texto } => crate::cli::perguntas::review(&alvo, &texto.join(" ")),
         Cmd::Add { texto } => crate::cli::caixa::caixa_add(&texto.join(" ")),
         Cmd::Caixa { sub } => crate::cli::caixa::caixa_cmd(sub),
+        Cmd::Delegar { papel, brief, brief_stdin, projeto, json, listar } => {
+            crate::cli::delegar::executar(papel, brief, brief_stdin, projeto, json, listar)
+        }
         Cmd::Stop => overdev_casa::overdev::stop(),
         Cmd::Run { max, yes } => overdev_run(max, yes),
         Cmd::Snapshot => overdev_snapshot(),

@@ -29,6 +29,7 @@ use crate::overdev;
 // o que fica aqui é a sessão acoplada (PTY). O arquivo único passava de 900 linhas — acima
 // do teto duro de 750 da casa.
 mod lancador;
+mod prompt_agentes;
 mod prompts;
 pub use lancador::*;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
@@ -75,7 +76,12 @@ impl AgentRunner for ClaudeRunner {
 
     fn command_line(&self, objetivo: &str) -> String {
         let _ = objetivo;
-        "claude --dangerously-skip-permissions \"<prompt do overdev>\"  (cwd = projeto)".to_string()
+        let projeto = std::env::current_dir().ok();
+        let modelo =
+            crate::agentes::carregar_ou_padrao(projeto.as_deref()).modelo_principal().to_string();
+        format!(
+            "claude --dangerously-skip-permissions --model {modelo} \"<prompt do overdev>\"  (cwd = projeto)"
+        )
     }
 
     fn spawn(&self, project: &Path, objetivo: &str) -> Result<Session, String> {
@@ -100,10 +106,15 @@ impl AgentRunner for ClaudeRunner {
         // permissão de ferramenta — o overdev roda AUTÔNOMO (o usuário disparou no próprio
         // projeto). Sem isso o agente trava na tela de confiança (o auto-continue não a responde).
         cmd.arg("--dangerously-skip-permissions");
+        // Modelo do papel `principal` na config EFETIVA deste projeto (erro de config é logado
+        // por `carregar_ou_padrao` e cai nos padrões — nunca em silêncio).
+        let agentes = crate::agentes::carregar_ou_padrao(Some(project));
+        cmd.arg("--model");
+        cmd.arg(agentes.modelo_principal());
         // O prompt inicial vai como ARGUMENTO posicional (o claude interativo o submete sozinho).
         // Digitar no PTY não funciona (bracketed paste). Comando natural, NÃO o slash `/eng-overdev`
         // (que não dispara como arg). O laço "não pare" é imposto pelo Stop hook do overdev.
-        cmd.arg(overdev_prompt(objetivo));
+        cmd.arg(overdev_prompt_com(objetivo, &agentes));
         cmd.cwd(project);
         // Ambiente ROBUSTO: quando a GUI é aberta pelo lançador do desktop, o env é mínimo e o
         // `claude` (node) morre na hora (virava zumbi). Herda o env do pai e reforça os

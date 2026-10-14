@@ -227,6 +227,30 @@ pub enum Cmd {
         #[command(subcommand)]
         sub: CaixaCmd,
     },
+    /// Delega um brief a um PAPEL da estrutura de agentes (ADR-0024): roda o motor do papel
+    /// (claude/codex/cursor) como processo filho e grava `delegacoes/<ts>-<papel>.*`.
+    /// Saída `--json`; rc 0 ok · 2 uso/config inválida · 3 indisponível · 4 motor falhou.
+    /// `--listar` mostra os papéis efetivos e a disponibilidade de cada motor.
+    Delegar {
+        /// Papel que executa (ex.: executor, fallback-1, visual, imagem).
+        #[arg(long)]
+        papel: Option<String>,
+        /// Arquivo com o brief.
+        #[arg(long, conflicts_with = "brief_stdin")]
+        brief: Option<std::path::PathBuf>,
+        /// Lê o brief do stdin.
+        #[arg(long)]
+        brief_stdin: bool,
+        /// Raiz do projeto (default: o diretório atual).
+        #[arg(long)]
+        projeto: Option<std::path::PathBuf>,
+        /// Machine-readable output.
+        #[arg(long)]
+        json: bool,
+        /// Lista os papéis efetivos e a disponibilidade dos motores.
+        #[arg(long, conflicts_with_all = ["papel", "brief", "brief_stdin"])]
+        listar: bool,
+    },
     /// End the run (hooks become inert again).
     Stop,
     /// Run overdev with an attached `claude` agent in a PTY (monitors + auto-continue).
