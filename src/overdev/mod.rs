@@ -24,6 +24,7 @@ mod divisao;
 mod gate;
 pub mod itens;
 mod notas;
+pub mod particao;
 pub mod progresso;
 pub mod supervisor;
 pub use arquivo::*;

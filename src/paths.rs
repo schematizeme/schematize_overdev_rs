@@ -108,6 +108,31 @@ pub fn multidoc_files(od_dir: &Path, single: &str, folder: &str) -> Vec<PathBuf>
     out
 }
 
+/// Sufixo de nome que marca uma partição de checklist inteiramente fechada (ADR-0027).
+pub const SUFIXO_CONCLUIDA: &str = "--completed";
+
+/// **O quê:** como [`multidoc_files`], mas SEM as partições `*--completed.md` (ADR-0027).
+///
+/// **Onde:** toda leitura de "afazeres" — itens abertos, prompts, Stop-hook. Contagens de
+/// progresso/total NÃO usam esta: continuam em [`multidoc_files`] (histórico inclui tudo).
+pub fn multidoc_files_abertos(od_dir: &Path, single: &str, folder: &str) -> Vec<PathBuf> {
+    let sufixo = format!("{SUFIXO_CONCLUIDA}.md");
+    let mut v = multidoc_files(od_dir, single, folder);
+    v.retain(|p| !p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(&sufixo)));
+    v
+}
+
+/// **O quê:** como [`read_multidoc`], lendo só [`multidoc_files_abertos`].
+///
+/// **Onde:** itens abertos, nudge, Stop-hook (a fonte de "o que ainda falta").
+pub fn read_multidoc_abertos(od_dir: &Path, single: &str, folder: &str) -> String {
+    let parts: Vec<String> = multidoc_files_abertos(od_dir, single, folder)
+        .iter()
+        .filter_map(|p| std::fs::read_to_string(p).ok())
+        .collect();
+    parts.join("\n")
+}
+
 /// Lê e CONCATENA um documento multi-arquivo (arquivo único + pasta). Junta com `\n` entre partes.
 pub fn read_multidoc(od_dir: &Path, single: &str, folder: &str) -> String {
     let parts: Vec<String> = multidoc_files(od_dir, single, folder)

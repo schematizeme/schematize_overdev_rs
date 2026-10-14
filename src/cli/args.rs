@@ -134,6 +134,9 @@ pub enum Cmd {
         /// Machine-readable output.
         #[arg(long)]
         json: bool,
+        /// Partitioned-checklist tools (ADR-0027). Without one, lists the items.
+        #[command(subcommand)]
+        sub: Option<ChecklistCmd>,
     },
     /// Mark the first open item matching the text as on-hold.
     Hold { texto: Vec<String> },
@@ -387,5 +390,42 @@ pub enum GraphCmd {
         /// Output directory (default: <project>_archive/obsidian).
         #[arg(long)]
         out: Option<String>,
+    },
+}
+
+/// Ferramentas do checklist PARTICIONADO (ADR-0027): partições de 25-50 itens com prioridade
+/// (`pN`) e `--completed` no nome.
+#[derive(Subcommand)]
+pub enum ChecklistCmd {
+    /// Migrate the monolithic CHECKLIST.md into checklist/pN-NNN-slug.md partitions
+    /// (backup in CHECKLIST.md.bak; CHECKLIST.md becomes an index with no items).
+    Particionar {
+        /// Maximum items per partition.
+        #[arg(long, default_value_t = 50)]
+        max: usize,
+        /// Minimum items per partition (smaller same-priority sections are merged).
+        #[arg(long, default_value_t = 25)]
+        min: usize,
+        /// Machine-readable output.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Rename partitions to/from `--completed` and regenerate the index.
+    Sync {
+        /// Machine-readable output.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Lint the partitions; exits non-zero on any violation.
+    Check {
+        /// Machine-readable output.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print the path of the next non-completed partition (by priority, respecting `depende`).
+    Proxima {
+        /// Machine-readable output.
+        #[arg(long)]
+        json: bool,
     },
 }

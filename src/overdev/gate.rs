@@ -122,7 +122,27 @@ pub fn check() {
     if it > st.max_iters {
         return; // guardrail anti-loop: permite parar
     }
-    let c = counts();
+    // ADR-0027: `sync` ANTES de contar (renomeia ↔ --completed e regenera o índice). Falha do
+    // sync nunca é engolida: vira aviso no stderr e a integridade abaixo ainda protege a parada.
+    if let Err(e) = super::particao::sync(&dir()) {
+        eprintln!("aviso: checklist sync falhou: {e}");
+    }
+    // Partição `--completed` com item aberto: os leitores de afazeres a ignoram, então sem este
+    // bloqueio o item sumiria da vista e o run pararia com trabalho pendente.
+    match super::particao::listar(&dir()) {
+        Ok(l) => {
+            let v = super::particao::integridade(&l);
+            if !v.is_empty() {
+                print_block(&format!(
+                    "MODO OVERDEV — NÃO PARE. Checklist inconsistente: {}",
+                    v.join(" | ").replace('"', "'")
+                ));
+                return;
+            }
+        }
+        Err(e) => eprintln!("aviso: não consegui listar as partições: {e}"),
+    }
+    let c = counts_abertos();
     match decide_stop(&c, gate_ok(), &open_items(), &human_items(), it, st.max_iters) {
         StopDecision::Permit => {}
         // Permite a parada (não bloqueia), mas mostra os itens humanos pendentes.

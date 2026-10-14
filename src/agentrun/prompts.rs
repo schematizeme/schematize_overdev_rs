@@ -30,7 +30,7 @@ pub fn should_nudge(idle_secs: u64, open_items: usize) -> bool {
 pub fn nudge_message(open_items: &[String]) -> String {
     let mut s = String::from("continue");
     if !open_items.is_empty() {
-        s.push_str("\nNÃO PARE — ainda há itens de máquina abertos no .schematize/overdev/CHECKLIST.md. Revise e feche estes:");
+        s.push_str("\nNÃO PARE — ainda há itens de máquina abertos no checklist (.schematize/overdev/CHECKLIST.md e partições `checklist/pN-NNN-*.md`). Revise e feche estes:");
         for it in open_items {
             s.push('\n');
             s.push_str(it);
@@ -38,6 +38,24 @@ pub fn nudge_message(open_items: &[String]) -> String {
     }
     s.push('\n');
     s
+}
+
+/// **O quê:** o brief localizado de um subagent: só o caminho da PARTIÇÃO dele (ADR-0027), nunca
+/// o checklist inteiro. PURA. **Onde:** o principal ao despachar um executor por partição.
+pub fn brief_subagente(particao: &Path) -> String {
+    format!(
+        "Feche os itens `- [ ]` SOMENTE da partição `{}` (leia só ela, mais DECISOES.md e o gate \
+         relevante; NÃO leia o CHECKLIST.md nem outras partições). Marque `- [x]` só com prova. \
+         Escreva apenas nessa partição. Ao terminar, rode `schematize-overdev checklist sync`.",
+        particao.display()
+    )
+}
+
+/// **O quê:** a instrução de leitura para Q.A., auditoria e red-first: eles LEEM as partições
+/// `*--completed.md` (histórico de prova). PURA. **Onde:** prompts de Q.A./auditoria.
+pub fn leitura_historico() -> &'static str {
+    "Para auditar/Q.A./red-first leia TAMBÉM as partições `.schematize/overdev/checklist/*--completed.md` \
+     (o histórico de prova): `- [x]` sem prova que passa hoje volta a `- [ ]` e a partição perde o sufixo."
 }
 
 /// Prompt inicial passado como ARGUMENTO do `claude` (o claude interativo o submete sozinho).
@@ -61,8 +79,15 @@ pub fn overdev_prompt_com(objetivo: &str, ag: &crate::agentes::Agentes) -> Strin
     let alvo = if o.is_empty() { String::new() } else { format!(" O objetivo é: {o}.") };
     format!(
         "Modo OVERDEV neste projeto.{alvo}\n\n{agentes}\
+         CHECKLIST PARTICIONADO (ADR-0027): `.schematize/overdev/CHECKLIST.md` é só o ÍNDICE; os \
+         itens vivem em `checklist/pN-NNN-slug.md` (25-50 itens, `p0` mais urgente). Leia o índice \
+         e SÓ a partição da vez (`schematize-overdev checklist proxima`); partições \
+         `*--completed.md` são histórico fechado — ignore-as, exceto Q.A./auditoria/red-first. Ao \
+         fechar itens rode `schematize-overdev checklist sync`. Subagent recebe SÓ o caminho da \
+         partição dele (nunca o checklist inteiro) e escreve só nela. Checklist monolítico com \
+         mais de 50 itens: rode `schematize-overdev checklist particionar` antes.\n\n\
          PASSO 0 — COMPLETUDE DO CHECKLIST, ANTES DE TICAR QUALQUER COISA. Leia \
-         `.schematize/overdev/CHECKLIST.md` (e `OBJETIVO.md`, `PLAN.md`, `DECISOES.md` se existirem) e \
+         o índice `.schematize/overdev/CHECKLIST.md` e a partição da vez (e `OBJETIVO.md`, `PLAN.md`, `DECISOES.md` se existirem) e \
          responda: ele cobre o objetivo INTEIRO, ou só a primeira fase? Se estiver PARCIAL/FASEADO — \
          se você prevê que vai precisar ACRESCENTAR itens depois de fechar os atuais — DERIVE AGORA \
          os itens que faltam, de TODAS as fases, e grave no CHECKLIST antes de começar. Um item por \

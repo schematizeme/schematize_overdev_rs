@@ -58,7 +58,7 @@ pub fn progress_at(root: &Path) -> Progress {
 /// É a lista que o auto-continue reenvia ao agente ocioso.
 pub fn open_items_at(root: &Path, limit: usize) -> Vec<String> {
     items_with_marker(
-        &crate::paths::read_multidoc(&dir_at(root), "CHECKLIST.md", "checklist"),
+        &crate::paths::read_multidoc_abertos(&dir_at(root), "CHECKLIST.md", "checklist"),
         "- [ ]",
         limit,
     )
@@ -138,6 +138,11 @@ pub(crate) fn counts() -> Counts {
     count_str(&crate::paths::read_multidoc(&dir(), "CHECKLIST.md", "checklist"))
 }
 
+/// Contagem só dos AFAZERES (ignora `*--completed.md`, ADR-0027) — o que o Stop-hook decide.
+pub(crate) fn counts_abertos() -> Counts {
+    count_str(&crate::paths::read_multidoc_abertos(&dir(), "CHECKLIST.md", "checklist"))
+}
+
 /// Linhas cujo `trim_start` começa por `marker` (ex.: "- [ ]" ou "- [H ]").
 pub(crate) fn items_with_marker(s: &str, marker: &str, limit: usize) -> Vec<String> {
     s.lines()
@@ -148,12 +153,16 @@ pub(crate) fn items_with_marker(s: &str, marker: &str, limit: usize) -> Vec<Stri
 }
 
 pub(crate) fn open_items() -> Vec<String> {
-    items_with_marker(&crate::paths::read_multidoc(&dir(), "CHECKLIST.md", "checklist"), "- [ ]", 8)
+    items_with_marker(
+        &crate::paths::read_multidoc_abertos(&dir(), "CHECKLIST.md", "checklist"),
+        "- [ ]",
+        8,
+    )
 }
 
 pub(crate) fn human_items() -> Vec<String> {
     items_with_marker(
-        &crate::paths::read_multidoc(&dir(), "CHECKLIST.md", "checklist"),
+        &crate::paths::read_multidoc_abertos(&dir(), "CHECKLIST.md", "checklist"),
         "- [H ]",
         12,
     )

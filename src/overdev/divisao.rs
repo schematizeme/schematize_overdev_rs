@@ -24,6 +24,12 @@ pub fn split(root: &Path, k: usize) -> Result<SplitResult, String> {
     if !od.is_dir() {
         return Err("nenhum overdev neste projeto (rode `overdev start` antes).".into());
     }
+    if super::particao::tem_particoes(&od) {
+        return Err("checklist já particionado (ADR-0027): o split round-robin não se aplica; \
+                    despache cada subagent com o caminho da sua partição \
+                    (`schematize-overdev checklist proxima`)."
+            .into());
+    }
     // Junta TODO o checklist (primário + parts já existentes) e separa itens-abertos do resto.
     let full = crate::paths::read_multidoc(&od, "CHECKLIST.md", "checklist");
     let mut open_items: Vec<String> = Vec::new();

@@ -23,6 +23,7 @@ pub mod delegar;
 pub mod desktop;
 pub mod grafo;
 pub mod leituras;
+pub mod particao;
 pub mod perguntas;
 pub mod prompt;
 pub mod saidajson;
