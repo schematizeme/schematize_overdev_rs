@@ -12,6 +12,7 @@
 //! campo: cards, checklist, marcas, acompanhamento e status do projeto ANTIGO não podem vazar para
 //! o novo. [`App::trocar_projeto`] reconstrói o estado e deixa a releitura para o `update`.
 
+use super::agentes_estado::EstadoAgentes;
 use super::caixa::EstadoCaixa;
 use super::carga::{Carga, Escopo};
 use super::execucao::EstadoExec;
@@ -108,6 +109,7 @@ pub struct App {
     pub exec: EstadoExec,
     pub caixa: EstadoCaixa,
     pub notas: EstadoNotas,
+    pub agentes: EstadoAgentes,
     pub seletor: Seletor,
     pub home: Home,
     pub sino: Sino,
@@ -151,6 +153,7 @@ impl App {
             exec: EstadoExec::default(),
             caixa: EstadoCaixa::default(),
             notas: EstadoNotas::default(),
+            agentes: EstadoAgentes::default(),
             seletor: Seletor::default(),
             home: Home::default(),
             sino: Sino::default(),

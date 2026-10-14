@@ -28,6 +28,8 @@
 //! o comando aparece antes de rodar. Esta janela nunca grava arquivo de PROJETO; a única escrita
 //! é a memória do último projeto escolhido (ver [`projeto`]).
 
+mod agentes_estado;
+mod agentes_tela;
 mod caixa;
 mod carga;
 mod checklist;
@@ -76,7 +78,7 @@ fn dir_dos_args(args: &[String]) -> Option<PathBuf> {
 }
 
 /// **O quê:** a aba pedida em `--aba <nome>`: Perguntas (padrão), Checklist, Histórico, Execução,
-/// Caixa ou Notas.
+/// Caixa, Notas ou Agentes.
 ///
 /// **Onde:** [`iniciar`]. Pelo NOME, e nome desconhecido cai nas Perguntas. Função PURA. O hub
 /// tem um teste que lê ESTE arquivo e procura `Some("<aba>")` — manter os literais aqui.
@@ -89,6 +91,7 @@ fn aba_dos_args(args: &[String]) -> Aba {
         Some("execucao") => Aba::Execucao,
         Some("caixa") => Aba::Caixa,
         Some("notas") => Aba::Notas,
+        Some("agentes") => Aba::Agentes,
         _ => Aba::Perguntas,
     }
 }
@@ -171,6 +174,7 @@ mod tests {
         assert_eq!(aba_dos_args(&v(&["--aba", "execucao"])), Aba::Execucao);
         assert_eq!(aba_dos_args(&v(&["--aba", "caixa"])), Aba::Caixa);
         assert_eq!(aba_dos_args(&v(&["--aba", "notas"])), Aba::Notas);
+        assert_eq!(aba_dos_args(&v(&["--aba", "agentes"])), Aba::Agentes);
         assert_eq!(aba_dos_args(&v(&["--aba", "perguntas"])), Aba::Perguntas);
         assert_eq!(aba_dos_args(&v(&[])), Aba::Perguntas);
         // Nome inventado não abre aba inventada, e a flag no fim da linha não panica.
@@ -194,6 +198,8 @@ mod tests {
     fn fontes_da_janela() -> Vec<(&'static str, &'static str)> {
         vec![
             ("main.rs", include_str!("main.rs")),
+            ("agentes_estado.rs", include_str!("agentes_estado.rs")),
+            ("agentes_tela.rs", include_str!("agentes_tela.rs")),
             ("caixa.rs", include_str!("caixa.rs")),
             ("carga.rs", include_str!("carga.rs")),
             ("checklist.rs", include_str!("checklist.rs")),
@@ -311,7 +317,18 @@ mod tests {
         // `cli::rodar`/`ponte` (a casca) e a abertura do terminal/editor é da plataforma. Exceções:
         // `projeto.rs` (plataforma: lista e memória do projeto) e `main.rs`/`cli.rs`/`terminal.rs`.
         for (nome, fonte) in fontes_da_janela() {
-            if matches!(nome, "main.rs" | "cli.rs" | "terminal.rs" | "projeto.rs" | "externos.rs") {
+            // `agentes_*`: a aba Agentes edita o `agentes.toml` (config, não o domínio do run) pela API
+            // `overdev_casa::agentes` — ADR-0024; checar motores sobe `codex login status` por ela.
+            if matches!(
+                nome,
+                "main.rs"
+                    | "cli.rs"
+                    | "terminal.rs"
+                    | "projeto.rs"
+                    | "externos.rs"
+                    | "agentes_estado.rs"
+                    | "agentes_tela.rs"
+            ) {
                 continue;
             }
             for l in producao_de(fonte) {

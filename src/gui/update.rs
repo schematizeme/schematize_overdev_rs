@@ -26,6 +26,14 @@ impl App {
 
     /// **O quê:** trata uma mensagem. **Onde:** o runtime do iced, a cada evento.
     pub fn update(&mut self, m: Msg) -> Task<Msg> {
+        let efeito = self.despachar(m);
+        // A aba Agentes lê o disco ao abrir (também com `--aba agentes` e depois de trocar de projeto).
+        let agentes = self.garantir_agentes();
+        Task::batch([efeito, agentes])
+    }
+
+    /// **O quê:** encaminha a mensagem ao tratador da aba. **Onde:** [`App::update`].
+    fn despachar(&mut self, m: Msg) -> Task<Msg> {
         match m {
             Msg::Aba(a) => {
                 self.aba = a;
@@ -78,6 +86,7 @@ impl App {
             | Msg::NotaTask(_)
             | Msg::NotaCorrecao(_)
             | Msg::NotaAdicionar(_) => self.atualizar_notas(m),
+            Msg::Agentes(m) => self.atualizar_agentes(m),
             Msg::Topo(m) => self.atualizar_topo(m),
             Msg::Home(m) => self.atualizar_home(m),
             Msg::Sino(m) => self.atualizar_sino(m),

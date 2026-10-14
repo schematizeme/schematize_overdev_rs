@@ -64,11 +64,12 @@ impl App {
             Aba::Execucao => self.ver_execucao(),
             Aba::Caixa => self.ver_caixa(),
             Aba::Notas => self.ver_notas(),
+            Aba::Agentes => self.ver_agentes(),
         };
         container(col.push(corpo)).padding(18).width(Fill).height(Fill).into()
     }
 
-    /// **O quê:** as sete abas em pílulas; a ativa em laranja. **Onde:** [`App::tela`].
+    /// **O quê:** as oito abas em pílulas; a ativa em laranja. **Onde:** [`App::tela`].
     fn abas(&self) -> Element<'_, Msg> {
         let c = self.cores;
         let contagem = |base: &str, n: usize| {
@@ -85,6 +86,7 @@ impl App {
             (Aba::Execucao, "Executar overdev".to_string()),
             (Aba::Caixa, contagem("Acrescentar ao projeto", self.caixa.pendentes.len())),
             (Aba::Notas, "Notas e correções".to_string()),
+            (Aba::Agentes, "Agentes".to_string()),
             (Aba::Historico, "Histórico (cópia de segurança)".to_string()),
         ];
         let mut linha = row![].spacing(6);

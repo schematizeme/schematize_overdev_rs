@@ -1,11 +1,12 @@
 //! As MENSAGENS da janela — tudo que pode acontecer, como dados.
 //!
-//! **O quê:** [`Msg`] (o evento), [`Aba`] (as seis abas) e [`Origem`] (de qual ação veio a
+//! **O quê:** [`Msg`] (o evento), [`Aba`] (as abas) e [`Origem`] (de qual ação veio a
 //! resposta de um comando do CLI).
 //!
 //! **Onde:** [`super::update`] consome; as telas (`view`) produzem. É a arquitetura Elm do iced:
 //! a tela só EMITE `Msg`, e o `update` é quem muda o estado — por isso testável sem janela.
 
+use super::agentes_estado::AgMsg;
 use super::carga::Carga;
 use super::projeto::Project;
 use super::sino::Notif;
@@ -23,6 +24,8 @@ pub enum Aba {
     Execucao,
     Caixa,
     Notas,
+    /// Papéis, motores, escada e roteamento do `agentes.toml` (ADR-0024).
+    Agentes,
 }
 
 /// De qual ação veio uma resposta de comando (`Msg::Resp`): decide ONDE a mensagem aparece e o
@@ -142,6 +145,9 @@ pub enum Msg {
     Topo(TopoMsg),
     Home(HomeMsg),
     Sino(SinoMsg),
+
+    // ---- agentes ----
+    Agentes(AgMsg),
 }
 
 /// O seletor de projeto do topo escolhido: um projeto da lista, ou a entrada «Outro caminho…».
