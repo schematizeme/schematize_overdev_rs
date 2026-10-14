@@ -122,12 +122,24 @@ fn carregar_de(global: &Path, projeto: Option<&Path>) -> Result<Agentes, ErroAge
 /// **Onde:** `ClaudeRunner::spawn`, terminal externo e prompt — o overdev não pode deixar de
 /// subir por causa de um TOML ruim, mas também não pode engolir o erro em silêncio.
 pub fn carregar_ou_padrao(projeto: Option<&Path>) -> Agentes {
-    match carregar(projeto) {
-        Ok(a) => a,
-        Err(e) => {
-            eprintln!("[schematize] agentes.toml inválido, usando os padrões embutidos: {e}");
-            Agentes::padrao()
-        }
+    let (ag, erro) =
+        carregar_ou_padrao_de(&caminho_global(), projeto.map(caminho_projeto).as_deref());
+    if let Some(e) = erro {
+        eprintln!("[schematize] agentes.toml inválido, usando os padrões embutidos: {e}");
+    }
+    ag
+}
+
+/// **O quê:** o miolo de [`carregar_ou_padrao`] com caminhos explícitos: devolve a config
+/// (padrões se houve erro) E o erro, para o chamador reportá-lo. **Onde:** `carregar_ou_padrao`
+/// e testes (sem tocar o HOME real).
+pub(crate) fn carregar_ou_padrao_de(
+    global: &Path,
+    projeto: Option<&Path>,
+) -> (Agentes, Option<ErroAgentes>) {
+    match carregar_de(global, projeto) {
+        Ok(a) => (a, None),
+        Err(e) => (Agentes::padrao(), Some(e)),
     }
 }
 

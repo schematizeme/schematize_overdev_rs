@@ -1,6 +1,6 @@
 //! Testes unitários de schema, carga, merge e validação (sem tocar o HOME real).
 
-use super::carga::{carregar_caminhos, de_texto};
+use super::carga::{carregar_caminhos, carregar_ou_padrao_de, de_texto};
 use super::*;
 use std::path::PathBuf;
 
@@ -202,4 +202,32 @@ fn argv_dos_motores() {
         linha_de_comando(Motor::Cursor, "auto", p, "-x"),
         ["-p", "--model", "auto", "--output-format", "json", "--force", "\n-x"]
     );
+}
+
+/// Garbage no `agentes.toml`: cai nos padrões E devolve o erro (que `carregar_ou_padrao` loga).
+#[test]
+fn toml_lixo_cai_nos_padroes_e_reporta_o_erro() {
+    let d = tmp("lixo");
+    let g = d.join("agentes.toml");
+    std::fs::write(&g, "isto { não é toml ===").expect("w");
+    let (ag, erro) = carregar_ou_padrao_de(&g, None);
+    assert_eq!(ag, Agentes::padrao());
+    let e = erro.expect("o erro não pode ser engolido");
+    assert!(matches!(e, ErroAgentes::Toml { .. }), "{e:?}");
+    assert!(e.to_string().contains("agentes.toml"), "{e}");
+    let (_, sem_erro) = carregar_ou_padrao_de(&d.join("nao-existe.toml"), None);
+    assert!(sem_erro.is_none(), "arquivo ausente não é erro");
+}
+
+/// `proximo_disponivel` pula motores indisponíveis: sem codex e sem cursor, vai direto ao fallback-2.
+#[test]
+fn proximo_disponivel_pula_motores_indisponiveis() {
+    let a = Agentes::padrao();
+    let so_claude = |m: Motor| m == Motor::Claude;
+    assert_eq!(proximo_disponivel(&a, "executor", so_claude).as_deref(), Some("fallback-2"));
+    let sem_cursor = |m: Motor| m != Motor::Cursor;
+    assert_eq!(proximo_disponivel(&a, "executor", sem_cursor).as_deref(), Some("fallback-1"));
+    assert_eq!(proximo_disponivel(&a, "fallback-1", sem_cursor).as_deref(), Some("fallback-2"));
+    assert_eq!(proximo_disponivel(&a, "fallback-2", |_| true), None);
+    assert_eq!(proximo_disponivel(&a, "executor", |_| false), None);
 }

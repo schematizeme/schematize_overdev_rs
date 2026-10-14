@@ -26,7 +26,7 @@ mod schema;
 pub use carga::{
     caminho_global, caminho_projeto, carregar, carregar_ou_padrao, salvar_global, salvar_projeto,
 };
-pub use delegar::{delegar, proximo_ativo, Desfecho, Pedido, Resultado};
+pub use delegar::{delegar, proximo_ativo, proximo_disponivel, Desfecho, Pedido, Resultado};
 pub use erro::ErroAgentes;
 pub use motores::{disponibilidade, linha_de_comando, Disponibilidade};
 pub use schema::{Agentes, Motor, Papel};

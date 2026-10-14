@@ -53,6 +53,21 @@ pub fn proximo_ativo(ag: &Agentes, papel: &str) -> Option<String> {
     ag.escada[pos + 1..].iter().find(|p| ag.papel(p).is_some_and(|x| x.ativo)).cloned()
 }
 
+/// **O quê:** como [`proximo_ativo`], mas também pula os papéis cujo motor NÃO está disponível
+/// (`disponivel` é injetado: a CLI passa [`disponibilidade`], os testes passam um closure fixo).
+/// **Onde:** [`delegar`] (campo `proximo` do rc 3), para o orquestrador não bater em rc 3 em loop.
+pub fn proximo_disponivel(
+    ag: &Agentes,
+    papel: &str,
+    disponivel: impl Fn(Motor) -> bool,
+) -> Option<String> {
+    let pos = ag.escada.iter().position(|p| p == papel)?;
+    ag.escada[pos + 1..]
+        .iter()
+        .find(|p| ag.papel(p).is_some_and(|x| x.ativo && disponivel(x.motor)))
+        .cloned()
+}
+
 /// **O quê:** carimbo `AAAAMMDD-HHMMSSmmm` local, para nome de arquivo único e ordenável.
 /// **Onde:** [`delegar`].
 fn carimbo() -> String {
@@ -105,7 +120,7 @@ pub fn delegar(ag: &Agentes, pedido: &Pedido) -> Result<Desfecho, ErroAgentes> {
             pedido.projeto.display()
         )));
     }
-    let proximo = || proximo_ativo(ag, &pedido.papel);
+    let proximo = || proximo_disponivel(ag, &pedido.papel, |m| disponibilidade(m).ok());
     if !papel.ativo {
         return Ok(Desfecho::Indisponivel { detalhe: "papel inativo".into(), proximo: proximo() });
     }

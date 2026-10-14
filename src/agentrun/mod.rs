@@ -69,6 +69,14 @@ pub trait AgentRunner {
 /// (hooks Stop/PreToolUse) já é feito pra ele.
 pub struct ClaudeRunner;
 
+/// **O quê:** a linha de comando mostrada no guardrail para o modelo `modelo`. PURA.
+/// **Onde:** `ClaudeRunner::command_line`.
+pub(crate) fn linha_claude(modelo: &str) -> String {
+    format!(
+        "claude --dangerously-skip-permissions --model {modelo} \"<prompt do overdev>\"  (cwd = projeto)"
+    )
+}
+
 impl AgentRunner for ClaudeRunner {
     fn name(&self) -> &str {
         "claude"
@@ -77,11 +85,8 @@ impl AgentRunner for ClaudeRunner {
     fn command_line(&self, objetivo: &str) -> String {
         let _ = objetivo;
         let projeto = std::env::current_dir().ok();
-        let modelo =
-            crate::agentes::carregar_ou_padrao(projeto.as_deref()).modelo_principal().to_string();
-        format!(
-            "claude --dangerously-skip-permissions --model {modelo} \"<prompt do overdev>\"  (cwd = projeto)"
-        )
+        let ag = crate::agentes::carregar_ou_padrao(projeto.as_deref());
+        linha_claude(ag.modelo_principal())
     }
 
     fn spawn(&self, project: &Path, objetivo: &str) -> Result<Session, String> {
@@ -395,20 +400,21 @@ mod tests {
     fn prompt_inicial_liga_o_overdev() {
         // Prompt em linguagem NATURAL (não o slash): sempre cita o modo OVERDEV e o
         // CHECKLIST; com objetivo, inclui o objetivo.
-        let com = overdev_prompt("meu objetivo");
+        let com = overdev_prompt_com("meu objetivo", &crate::agentes::Agentes::padrao());
         assert!(com.contains("OVERDEV"));
         assert!(com.contains("CHECKLIST"));
         assert!(com.contains("meu objetivo"));
         // Objetivo vazio => sem a cláusula "O objetivo é:".
-        let vazio = overdev_prompt("   ");
+        let vazio = overdev_prompt_com("   ", &crate::agentes::Agentes::padrao());
         assert!(vazio.contains("OVERDEV"));
         assert!(!vazio.contains("O objetivo é:"), "objetivo vazio não anexa alvo");
     }
 
     #[test]
     fn command_line_mostra_o_agente() {
-        let cl = ClaudeRunner.command_line("obj X");
-        assert!(cl.contains("claude"));
+        // PURA: nunca lê o ~/.claude real.
+        let cl = linha_claude("opus");
+        assert!(cl.contains("claude") && cl.contains("--model opus"), "{cl}");
         assert_eq!(ClaudeRunner.name(), "claude");
     }
 
