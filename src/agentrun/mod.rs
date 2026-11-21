@@ -28,6 +28,7 @@ use crate::overdev;
 // A quebra segue a razão de MUDANÇA: prompts mudam por produto, lançador por plataforma, e
 // o que fica aqui é a sessão acoplada (PTY). O arquivo único passava de 900 linhas — acima
 // do teto duro de 750 da casa.
+pub mod jaulado;
 mod lancador;
 mod pathenv;
 mod prompt_agentes;

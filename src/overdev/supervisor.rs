@@ -129,8 +129,15 @@ pub fn supervise(projeto: &Path, max: u32) -> u32 {
     let projeto: PathBuf = projeto.canonicalize().unwrap_or_else(|_| projeto.to_path_buf());
     let mut relancamentos = 0u32;
     let mut sem_agente = 0u32;
-    registrar(&projeto, "supervisor iniciado");
+    registrar(
+        &projeto,
+        &format!(
+            "supervisor iniciado (oom_score_adj={}; as jaulas dos filhos usam 800)",
+            oom_score_adj_proprio()
+        ),
+    );
     loop {
+        apurar_jaulas(&projeto);
         let trabalho = tem_trabalho_de_maquina(&projeto);
         let agente = agente_vivo_em(&projeto);
         sem_agente = if agente { 0 } else { sem_agente + 1 };
@@ -147,7 +154,10 @@ pub fn supervise(projeto: &Path, max: u32) -> u32 {
                 }
                 relancamentos += 1;
                 sem_agente = 0;
-                let p = prompt_retomada(relancamentos);
+                // Unidade morta por OOM/timeout: re-decompõe (ou parkeia), nunca reexecuta igual.
+                let od = crate::paths::overdev_dir_at(&projeto);
+                let p = agentrun::jaulado::prompt_de_relancamento(&od)
+                    .unwrap_or_else(|| prompt_retomada(relancamentos));
                 match agentrun::launch_prompt_in_terminal(&projeto, &p) {
                     Ok(term) => {
                         registrar(&projeto, &format!("relançamento {relancamentos} em {term}"))
@@ -159,6 +169,33 @@ pub fn supervise(projeto: &Path, max: u32) -> u32 {
             }
         }
         std::thread::sleep(Duration::from_secs(RONDA_SEGS));
+    }
+}
+
+/// **O quê:** `oom_score_adj` deste processo (lido de `/proc/self`); `-1` se ilegível.
+/// **Onde:** log de início do [`supervise`]: o supervisor roda FORA das jaulas e abaixo de 800.
+fn oom_score_adj_proprio() -> i32 {
+    std::fs::read_to_string("/proc/self/oom_score_adj")
+        .ok()
+        .and_then(|t| t.trim().parse().ok())
+        .unwrap_or(-1)
+}
+
+/// **O quê:** apura as unidades jauladas que terminaram e loga cada morte por OOM/timeout como
+/// "unidade morta" — o supervisor segue, nem reinicia nem derruba as demais unidades.
+/// **Onde:** [`supervise`], no começo de cada ronda. **Efeitos:** lê/remove `jaula-*`, escreve logs.
+fn apurar_jaulas(projeto: &Path) {
+    let od = crate::paths::overdev_dir_at(projeto);
+    for r in agentrun::jaulado::apurar(&od) {
+        if r.veredito == "oom" || r.veredito == "timeout" {
+            registrar(
+                projeto,
+                &format!(
+                "unidade {} MORTA ({}; pico {:?} MiB, teto {} MiB, geração {}) — a operação segue",
+                r.unidade, r.veredito, r.pico_mib, r.teto_mib, r.geracao
+            ),
+            );
+        }
     }
 }
 

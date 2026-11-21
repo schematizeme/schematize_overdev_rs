@@ -252,7 +252,9 @@ pub fn launch_prompt_in_terminal(project: &Path, prompt: &str) -> Result<String,
         "o CLI `claude` não está no PATH — instale o Claude Code (claude.ai/code).".to_string()
     })?;
     pre_trust_project(project);
-    let modelo = aspas_sh(crate::agentes::carregar_ou_padrao(Some(project)).modelo_principal());
+    let modelo_raw =
+        crate::agentes::carregar_ou_padrao(Some(project)).modelo_principal().to_string();
+    let modelo = aspas_sh(&modelo_raw);
     // Control-plane operacional: `.schematize/overdev/` (cai no `.overdev/` legado se o projeto
     // ainda estiver no layout antigo — resolvido pelo módulo `paths`).
     let od = crate::paths::overdev_dir_at(project);
@@ -260,10 +262,15 @@ pub fn launch_prompt_in_terminal(project: &Path, prompt: &str) -> Result<String,
     purga_lancamentos_velhos(&od);
     let (promptfile, script) = arquivos_de_lancamento(&od);
     std::fs::write(&promptfile, prompt).map_err(|e| format!("gravar prompt: {e}"))?;
-    // O terminal roda `bash run.sh` (non-login): NÃO lê ~/.bashrc, então o corpo (do seam
-    // `Terminal`) reforça o PATH com os dirs de usuário e chama o claude pelo caminho ABSOLUTO —
-    // assim funciona mesmo com o app aberto pelo lançador do desktop.
-    let corpo = terminal::corpo_claude_prompt(project, &claude, &modelo, &promptfile);
+    // Cada `claude` nasce JAULADO (teto duro de memória): estourou, morre SÓ ele e o supervisor
+    // apura o veredito. Sem backend a jaula RECUSA (nunca roda sem teto em silêncio), salvo
+    // `SCHEMATIZE_SEM_JAULA=1`, que cai no wrapper legado abaixo, com aviso no jaulas.jsonl.
+    let jaulado = jaulado::corpo_do_lancamento(&od, project, &claude, &modelo_raw, &promptfile)?;
+    // O terminal roda `bash run.sh` (non-login): NÃO lê ~/.bashrc, então o corpo reforça o PATH
+    // com os dirs de usuário e chama o claude pelo caminho ABSOLUTO — assim funciona mesmo com
+    // o app aberto pelo lançador do desktop.
+    let corpo = jaulado
+        .unwrap_or_else(|| terminal::corpo_claude_prompt(project, &claude, &modelo, &promptfile));
     crate::nucleo::terminal::abrir_nomeado(&terminal::script_arquivo(
         script,
         corpo,
