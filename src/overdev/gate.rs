@@ -86,10 +86,21 @@ pub(crate) fn decide_stop(
     StopDecision::Permit
 }
 
+/// **O quê:** `true` se o ambiente marca a sessão como `claude -p` do handoff vivo
+/// (`SCHEMATIZE_HANDOFF_VIVO=1`). **Onde:** início de [`check`]: permite parar na hora, sem
+/// ler checklist nem contar ciclo (evita bloqueio/loop da sessão headless). PURA.
+pub fn parada_livre_por_handoff_vivo(valor: Option<&str>) -> bool {
+    valor.is_some_and(|v| v.trim() == "1")
+}
+
 /// Stop hook: rejeita a parada enquanto houver `- [ ]` (trabalho de máquina).
 /// Quando só restam `- [H ]` (humanos), PERMITE parar e informa os pendentes.
 pub fn check() {
     drain_stdin();
+    // `claude -p` do handoff vivo é headless e NÃO é o run: nunca bloqueia a parada dele.
+    if parada_livre_por_handoff_vivo(std::env::var("SCHEMATIZE_HANDOFF_VIVO").ok().as_deref()) {
+        return;
+    }
     // AUTO-CURA do hook quebrado, ANTES do retorno de inerte (§ UX de massa: o software
     // se conserta, não manda o usuário editar settings.json).
     //
@@ -194,6 +205,16 @@ mod tests {
     use std::os::unix::process::ExitStatusExt;
     use std::process::{ExitStatus, Output};
     use std::sync::Mutex;
+
+    /// Só o valor exato `1` libera a parada; ausente/outro valor mantém o comportamento atual.
+    #[test]
+    fn handoff_vivo_so_com_valor_1() {
+        assert!(parada_livre_por_handoff_vivo(Some("1")));
+        assert!(parada_livre_por_handoff_vivo(Some(" 1 ")));
+        for v in [None, Some(""), Some("0"), Some("true")] {
+            assert!(!parada_livre_por_handoff_vivo(v), "{v:?}");
+        }
+    }
 
     /// `Shell` falso: devolve o código dado e guarda o argv recebido.
     struct Falso {
