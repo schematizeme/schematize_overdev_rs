@@ -181,6 +181,12 @@ impl Executor {
             Proximo::Despachar { modelo, geracao, nota } => (modelo, geracao, nota),
             Proximo::Parkear(m) => return self.parkear(&it, &m),
         };
+        if modelo != it.modelo {
+            self.avisar(
+                "escalada",
+                &format!("{id}: {} -> {modelo} (falhas anteriores registradas)", it.modelo),
+            )?;
+        }
         let n = it.despachos + 1;
         let unidade = if self.op.jaulado {
             nome_da_unidade(

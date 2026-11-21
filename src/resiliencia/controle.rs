@@ -11,7 +11,6 @@ use schematize_plataforma::memoria::{
     Decisao, EstadoHost, Fonte, Governador, Historico, Leitura, PedidoAdmissao, Politica,
     UnidadeAtiva,
 };
-use schematize_plataforma::sistema::MargemMemoria;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -44,14 +43,9 @@ pub struct Controle {
     pub linhas_rejeitadas: usize,
 }
 
-/// **O quê:** política do governador a partir da margem segura do host. `margem_mib` = piso
-/// crítico preservado (ou o override do plano). **Onde:** `Controle::novo` e o CLI.
-pub fn politica_para(
-    max_paralelo: usize,
-    margem_override: Option<u64>,
-    m: &MargemMemoria,
-) -> Politica {
-    let margem_mib = margem_override.unwrap_or(m.piso_critico_mib);
+/// **O quê:** política do governador com a margem do host (`sistema::margem_segura`: piso
+/// crítico, ou o override do plano). **Onde:** CLI (`executar`, `memoria status`).
+pub fn politica_para(max_paralelo: usize, margem_mib: u64) -> Politica {
     Politica { margem_mib, max_paralelo: max_paralelo.max(1), ..Politica::default() }
 }
 
