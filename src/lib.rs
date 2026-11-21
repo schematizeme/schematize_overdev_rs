@@ -33,6 +33,7 @@ pub mod agents;
 pub mod archive;
 pub mod config;
 pub mod overdev;
+pub mod padroes;
 pub mod overdevdb;
 pub mod panel;
 pub mod paths;

@@ -9,6 +9,7 @@
 
 use super::prompt_agentes::trecho_agentes;
 use super::*;
+use crate::padroes::prefixo_estavel;
 
 /// Quantos itens abertos, no máximo, entram na mensagem de nudge.
 pub(crate) const NUDGE_ITEMS: usize = 8;
@@ -44,9 +45,10 @@ pub fn nudge_message(open_items: &[String]) -> String {
 /// o checklist inteiro. PURA. **Onde:** o principal ao despachar um executor por partição.
 pub fn brief_subagente(particao: &Path) -> String {
     format!(
-        "Feche os itens `- [ ]` SOMENTE da partição `{}` (leia só ela, mais DECISOES.md e o gate \
+        "{}Feche os itens `- [ ]` SOMENTE da partição `{}` (leia só ela, mais DECISOES.md e o gate \
          relevante; NÃO leia o CHECKLIST.md nem outras partições). Marque `- [x]` só com prova. \
          Escreva apenas nessa partição. Ao terminar, rode `schematize-overdev checklist sync`.",
+        prefixo_estavel(),
         particao.display()
     )
 }
@@ -77,8 +79,9 @@ pub fn overdev_prompt_com(objetivo: &str, ag: &crate::agentes::Agentes) -> Strin
     let agentes = trecho_agentes(ag);
     let o = objetivo.trim();
     let alvo = if o.is_empty() { String::new() } else { format!(" O objetivo é: {o}.") };
+    let padroes = prefixo_estavel();
     format!(
-        "Modo OVERDEV neste projeto.{alvo}\n\n{agentes}\
+        "{padroes}Modo OVERDEV neste projeto.{alvo}\n\n{agentes}\
          CHECKLIST PARTICIONADO (ADR-0027): `.schematize/overdev/CHECKLIST.md` é só o ÍNDICE; os \
          itens vivem em `checklist/pN-NNN-slug.md` (25-50 itens, `p0` mais urgente). Leia o índice \
          e SÓ a partição da vez (`schematize-overdev checklist proxima`); partições \
@@ -108,7 +111,7 @@ pub fn overdev_prompt_com(objetivo: &str, ag: &crate::agentes::Agentes) -> Strin
 /// Prompt (linguagem natural) que dispara a GERAÇÃO DE AFAZERES do overdev a partir do histórico
 /// recuperável do archive (skill schematize-archive `/archive-todos`). Consumido pela GUI (botão).
 pub fn archive_todos_prompt() -> String {
-    "Gere os AFAZERES do overdev a partir do histórico RECUPERÁVEL deste projeto, seguindo a skill \
+    let corpo = "Gere os AFAZERES do overdev a partir do histórico RECUPERÁVEL deste projeto, seguindo a skill \
      schematize-archive (/archive-todos). Se não existir `<projeto>_archive/`, crie primeiro \
      (/archive-init — o archive é CRITICIDADE 0, obrigatório, nunca opcional). Varra EXAUSTIVAMENTE o \
      `<projeto>_archive/` + `.schematize/` + o histórico git: checklists com `- [ ]`/`- [~]`, perguntas \
@@ -119,12 +122,12 @@ pub fn archive_todos_prompt() -> String {
      `.schematize/overdev/CHECKLIST.md` (+ OBJETIVO.md + espelho no `<projeto>_archive/overdev/`) e \
      reporte a contagem por fonte. SAÍDA PARTICIONADA (ADR-0027): ao terminar rode \
      `schematize-overdev checklist particionar` (partições de 25-50 itens, `pN` por prioridade, \
-     `CHECKLIST.md` vira índice) e confira com `schematize-overdev checklist check`. NÃO pare até o checklist estar completo e consistente."
-        .to_string()
+     `CHECKLIST.md` vira índice) e confira com `schematize-overdev checklist check`. NÃO pare até o checklist estar completo e consistente.";
+    format!("{}{corpo}", prefixo_estavel())
 }
 
 pub fn reindex_prompt() -> String {
-    "Rode o índice/grafo deste projeto seguindo a §39 da engenharia da casa, gerando um GRAFO \
+    let corpo = "Rode o índice/grafo deste projeto seguindo a §39 da engenharia da casa, gerando um GRAFO \
      GLOBAL da aplicação (não um por microserviço solto). REGRAS OBRIGATÓRIAS:\n\
      \n\
      1) GRAFO GLOBAL — SEMPRE gere `.schematize/grafos/GRAFO_GLOBAL.md`. Se esta pasta for uma \
@@ -147,6 +150,6 @@ pub fn reindex_prompt() -> String {
      `.schematize/grafos/`.\n\
      \n\
      Confira contra o código: nenhum nó órfão, nenhuma função pública sem entrada. NÃO pare até o \
-     grafo global e os por-serviço estarem completos e consistentes."
-        .to_string()
+     grafo global e os por-serviço estarem completos e consistentes.";
+    format!("{}{corpo}", prefixo_estavel())
 }
