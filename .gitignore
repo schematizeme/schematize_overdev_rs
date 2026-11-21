@@ -1,2 +1,5 @@
 /target
 **/*.rs.bk
+# estado durável do run (journal/snapshot/vigia) e control-plane local
+.overdev/
+.schematize/

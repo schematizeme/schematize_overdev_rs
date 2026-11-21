@@ -2020,8 +2020,8 @@ dependencies = [
 
 [[package]]
 name = "schematize_plataforma"
-version = "0.3.0"
-source = "git+https://github.com/schematizeme/schematize_plataforma_rs?tag=v0.3.0#191e4aeadaf56fc5021a8d093ef86fb0e062b9eb"
+version = "0.4.0"
+source = "git+https://github.com/schematizeme/schematize_plataforma_rs?tag=v0.4.0#264cd4db365ed2f22c5cfd42afb1cb6e0485c52c"
 
 [[package]]
 name = "scoped-tls"
