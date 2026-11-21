@@ -32,6 +32,7 @@ pub mod agentrun;
 pub mod agents;
 pub mod archive;
 pub mod config;
+pub mod handoff_vivo;
 pub mod otimiza;
 pub mod overdev;
 pub mod overdevdb;
