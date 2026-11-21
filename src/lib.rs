@@ -41,5 +41,6 @@ pub mod paths;
 #[cfg(test)]
 mod processos_falso;
 pub mod projects;
+pub mod resiliencia;
 pub mod settings;
 pub mod usage;
