@@ -40,7 +40,7 @@ pub use prompts::*;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{self, Receiver};
+use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::Mutex;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -51,6 +51,17 @@ pub const IDLE_THRESHOLD_SECS: u64 = 45;
 
 /// Teto default de nudges (`continue`) quando o CLI não recebe `--max`.
 pub const DEFAULT_MAX_NUDGES: u64 = 20;
+
+/// Pedaços (de até 4 KiB) que o canal do PTY guarda antes de frear o leitor: 256 x 4 KiB = 1 MiB
+/// no pior caso. Antes o canal era ilimitado e uma GUI lenta fazia a memória crescer sem teto.
+pub const CANAL_PTY_CAPACIDADE: usize = 256;
+
+/// O quê: cria o canal limitado do output do PTY. Onde: `ClaudeRunner::spawn`, entre a thread
+/// de leitura (produtor) e a [`Session`] (consumidor). Cheio, o produtor BLOQUEIA (backpressure):
+/// nenhum dado se perde, o agente só espera o consumidor drenar.
+fn canal_do_pty() -> (SyncSender<String>, Receiver<String>) {
+    mpsc::sync_channel::<String>(CANAL_PTY_CAPACIDADE)
+}
 
 /// Agente de código plugável. Default = [`ClaudeRunner`]; futuros (GPT, etc.)
 /// só implementam este trait sem tocar no `run_attached`.
@@ -147,7 +158,7 @@ impl AgentRunner for ClaudeRunner {
         let writer = pair.master.take_writer().map_err(|e| format!("PTY writer: {e}"))?;
 
         // Thread de leitura: empurra pedaços de output do PTY pro canal.
-        let (tx, rx) = mpsc::channel::<String>();
+        let (tx, rx) = canal_do_pty();
         let reader_thread = thread::spawn(move || {
             let mut reader = reader;
             let mut buf = [0u8; 4096];
@@ -339,6 +350,22 @@ fn print_summary(project: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// O canal do PTY tem teto: sem consumidor, o produtor enche `CANAL_PTY_CAPACIDADE` pedaços
+    /// e o próximo `try_send` recusa (backpressure) em vez de crescer a memória sem limite.
+    #[test]
+    fn canal_do_pty_e_limitado() {
+        let (tx, rx) = canal_do_pty();
+        for i in 0..CANAL_PTY_CAPACIDADE {
+            assert!(tx.try_send(format!("{i}")).is_ok(), "cabe até a capacidade");
+        }
+        assert!(
+            matches!(tx.try_send("x".into()), Err(mpsc::TrySendError::Full(_))),
+            "cheio: recusa em vez de crescer"
+        );
+        assert_eq!(rx.try_recv().ok().as_deref(), Some("0"), "ordem preservada (FIFO)");
+        assert!(tx.try_send("y".into()).is_ok(), "drenou um, cabe de novo");
+    }
 
     #[test]
     fn nao_cutuca_antes_do_limiar() {
