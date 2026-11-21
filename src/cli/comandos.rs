@@ -239,6 +239,15 @@ pub fn executar(sub: Cmd) -> Result<(), String> {
             let n = crate::overdev::supervisor::supervise(&projeto, teto);
             println!("supervisor encerrado após {n} relançamento(s).");
         }),
+        Cmd::Executar { plano, o } => crate::cli::resiliencia::executar(plano.as_deref(), &o),
+        Cmd::Retomar { o } => crate::cli::resiliencia::executar(None, &o),
+        Cmd::Sistema { sub } => crate::cli::resiliencia::sistema(sub),
+        Cmd::Memoria { sub } => crate::cli::resiliencia::memoria(sub),
+        Cmd::Vigia { sub } => crate::cli::resiliencia::vigia(sub),
+        Cmd::HandoffVivo { args } => match crate::handoff_vivo::executar(&args) {
+            0 => Ok(()),
+            c => Err(format!("handoff-vivo terminou com código {c}")),
+        },
         Cmd::Split { k, dispatch, force } => crate::cli::comandos::overdev_split(k, dispatch, force),
         Cmd::Check => {
             crate::overdev::check();

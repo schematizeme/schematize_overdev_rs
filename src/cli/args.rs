@@ -63,6 +63,43 @@ pub enum Cmd {
         #[arg(long)]
         max: Option<u32>,
     },
+    /// Executa o plano de unidades sob governador de memória, com journal durável (WAL): se o
+    /// processo morrer (SIGKILL/OOM), `--resume` retoma sem perder nem duplicar trabalho.
+    Executar {
+        /// Arquivo JSON do plano (itens, prefixo estável, paralelo). Sem ele, retoma o estado.
+        #[arg(long)]
+        plano: Option<std::path::PathBuf>,
+        #[command(flatten)]
+        o: OpcoesExec,
+    },
+    /// Retoma o run do estado durável (`.overdev/estado/`): reconcilia unidades órfãs e
+    /// re-despacha só o que estava em voo. É o que o `schematize-vigia` chama com `--resume`.
+    Retomar {
+        #[command(flatten)]
+        o: OpcoesExec,
+    },
+    /// Diagnóstico do sistema (OOM, systemd, zram, PSI). Só leitura: NUNCA altera o sistema.
+    Sistema {
+        #[command(subcommand)]
+        sub: SistemaCmd,
+    },
+    /// Memória: leitura atual, governador e tetos recomendados por tipo de tarefa.
+    Memoria {
+        #[command(subcommand)]
+        sub: MemoriaCmd,
+    },
+    /// Vigia (watchdog) que relança o overdev com `--resume` quando ele morre.
+    Vigia {
+        #[command(subcommand)]
+        sub: VigiaCmd,
+    },
+    /// Handoff vivo: mantém o handoff do projeto sempre atualizado (run | agora | verificar | status).
+    #[command(name = "handoff-vivo", trailing_var_arg = true, allow_hyphen_values = true)]
+    HandoffVivo {
+        /// `run|agora|verificar|status` e as flags (`--mecanico-s`, `--claude-s`, `--sem-claude`,
+        /// `--modelo`, `--projeto`, `--reparar`).
+        args: Vec<String>,
+    },
     /// SPLIT do checklist em K arquivos `checklist/part-N.md` (pastas multi-arquivo) pra rodar
     /// multiagents. Respeita o governador (`schematize agents`): mostra quantos subagents por claude
     /// e recusa passar do teto seguro. `--dispatch` lança os K claudes (cada um no seu part).
@@ -427,5 +464,81 @@ pub enum ChecklistCmd {
         /// Machine-readable output.
         #[arg(long)]
         json: bool,
+    },
+}
+
+/// Opções comuns de `executar`/`retomar`.
+#[derive(clap::Args, Clone, Debug)]
+pub struct OpcoesExec {
+    /// Diretório do estado durável (padrão: `<control-plane>/estado`).
+    #[arg(long)]
+    pub estado: Option<std::path::PathBuf>,
+    /// Aceito para compatibilidade com o vigia (que o acrescenta nos relançamentos): a retomada
+    /// é automática quando há estado.
+    #[arg(long, hide = true)]
+    pub resume: bool,
+    /// Roda as unidades SEM jaula de memória (escolha explícita; sai um aviso no jaulas.jsonl).
+    #[arg(long)]
+    pub sem_jaula: bool,
+    /// Na retomada, mata as unidades órfãs em vez de reanexar.
+    #[arg(long)]
+    pub matar_orfas: bool,
+    /// `CHECKLIST.md` onde o item parkeado vira `- [~]`.
+    #[arg(long)]
+    pub checklist: Option<std::path::PathBuf>,
+    /// Unidades em paralelo no máximo (padrão: o do plano, ou 2).
+    #[arg(long)]
+    pub paralelo: Option<usize>,
+    /// Margem do host (MiB) que nunca se compromete (padrão: `sistema::margem_segura`).
+    #[arg(long)]
+    pub margem_mib: Option<u64>,
+    /// Machine-readable summary on stdout.
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// `overdev sistema ...`
+#[derive(Subcommand)]
+pub enum SistemaCmd {
+    /// Perfil do host + achados acionáveis (somente leitura).
+    Diag {
+        /// Machine-readable output.
+        #[arg(long)]
+        json: bool,
+        /// Idioma do texto: pt | en (padrão: do ambiente).
+        #[arg(long, value_parser = ["pt", "en"])]
+        lang: Option<String>,
+    },
+}
+
+/// `overdev memoria ...`
+#[derive(Subcommand)]
+pub enum MemoriaCmd {
+    /// Leitura atual do host, decisão do governador e tetos recomendados.
+    Status {
+        /// Machine-readable output.
+        #[arg(long)]
+        json: bool,
+        /// Diretório do estado (onde mora `picos.hist`); padrão: `<control-plane>`.
+        #[arg(long)]
+        estado: Option<std::path::PathBuf>,
+    },
+}
+
+/// `overdev vigia ...`
+#[derive(Subcommand)]
+pub enum VigiaCmd {
+    /// Imprime a unit systemd do vigia (nada é instalado).
+    Unit {
+        /// Diretório do estado (padrão: `<control-plane>/estado`).
+        #[arg(long)]
+        estado: Option<std::path::PathBuf>,
+    },
+    /// Delega ao `schematize-vigia` (precisa estar no PATH; nada é baixado). Sem argumentos,
+    /// vigia `overdev retomar` no estado padrão.
+    Run {
+        /// Argumentos repassados ao `schematize-vigia` (depois de `--`).
+        #[arg(last = true)]
+        args: Vec<String>,
     },
 }

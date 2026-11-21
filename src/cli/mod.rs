@@ -26,6 +26,7 @@ pub mod leituras;
 pub mod particao;
 pub mod perguntas;
 pub mod prompt;
+pub mod resiliencia;
 pub mod saidajson;
 
 /// **O quê:** devolve o `SIGPIPE` ao padrão do Unix (o Rust o ignora; `| head` precisa morrer
@@ -58,7 +59,7 @@ pub fn run(args: Vec<String>, plat: Plataforma, hooks: Box<dyn Hooks>) -> i32 {
         return 1;
     }
     {
-        let cli = match Cli::try_parse_from(args) {
+        let cli = match Cli::try_parse_from(resiliencia::normalizar_resume(args)) {
             Ok(c) => c,
             Err(e) => {
                 // Mesmo caminho do `Cli::parse()`: help/version em stdout (0), uso errado em stderr (2).
