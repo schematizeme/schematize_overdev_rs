@@ -245,7 +245,10 @@ impl Executor {
             filho.matar();
             return self.lancamento_falhou(&id, &e);
         }
-        self.ativos.insert(id, Ativo { filho, tipo: it.plano.tipo.clone(), teto_mib });
+        self.ativos.insert(
+            id,
+            Ativo { filho, tipo: it.plano.tipo.clone(), teto_mib, pedido_encolher: false },
+        );
         Ok(())
     }
 
@@ -277,6 +280,11 @@ impl Executor {
                 return self.avisar("unidade_perdida", &format!("{id}: {motivo}"));
             }
         };
+        let mut s = s;
+        if s.veredito == Veredito::Falhou && ativo.pedido_encolher {
+            // Morreu depois de o governador pedir que encolhesse: foi pressão de memória, não bug.
+            s.veredito = Veredito::EstourouMemoria;
+        }
         let (modelo, resfile) = voo.map(|u| (u.modelo, u.resfile)).unwrap_or_default();
         let log = Path::new(&resfile).with_extension("log");
         let (uso, custo) = uso_do_log(&log, &modelo);

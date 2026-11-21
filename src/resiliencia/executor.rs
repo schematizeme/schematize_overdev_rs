@@ -75,6 +75,8 @@ pub struct Ativo {
     pub tipo: String,
     /// Teto (MiB) com que foi admitida.
     pub teto_mib: u64,
+    /// O governador pediu que encolhesse/parasse: se morrer com falha, foi pressão de memória.
+    pub pedido_encolher: bool,
 }
 
 /// Resultado de um run.
@@ -184,7 +186,7 @@ impl Executor {
             let it = self.d.estado().itens.get(&id).cloned();
             let teto = self.d.estado().voo.get(&id).map_or(0, |u| u.teto_mib);
             let tipo = it.map(|i| i.plano.tipo).unwrap_or_default();
-            self.ativos.insert(id, Ativo { filho, tipo, teto_mib: teto });
+            self.ativos.insert(id, Ativo { filho, tipo, teto_mib: teto, pedido_encolher: false });
         }
         Ok(())
     }
@@ -278,6 +280,7 @@ impl Executor {
     fn pedir(&mut self, id: &str, o_que: &str, motivo: &str) -> Result<(), Erro> {
         self.avisar(&format!("pedir_{o_que}"), &format!("{id} ({motivo})"))?;
         if let Some(a) = self.ativos.get_mut(id) {
+            a.pedido_encolher = true;
             a.filho.pedir_parar();
         }
         Ok(())

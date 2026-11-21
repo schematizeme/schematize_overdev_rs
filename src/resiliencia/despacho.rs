@@ -20,9 +20,14 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::time::{Duration, Instant};
 
-/// Script do invólucro: `$1`=resfile, resto=comando. Portão, comando, resfile atômico, mesmo código.
-const INVOLUCRO: &str = "res=$1; shift; read -r _ || exit 3; \"$@\" </dev/null; c=$?; \
-printf '%s\\n' \"$c\" > \"$res.tmp\" && mv \"$res.tmp\" \"$res\"; exit \"$c\"";
+/// Script do invólucro: `$1`=resfile, resto=comando. Portão, comando, resfile atômico com
+/// `<código> <oom_kill>` (o `oom_kill` do cgroup da jaula só é lido com `OVERDEV_JAULA=1`: é a
+/// evidência de OOM que sobrevive ao fim do scope) e o mesmo código de saída.
+const INVOLUCRO: &str = "res=$1; shift; read -r _ || exit 3; \"$@\" </dev/null; c=$?; o=0; \
+if [ \"$OVERDEV_JAULA\" = 1 ] && [ \"$c\" -ge 128 ]; then \
+f=/sys/fs/cgroup$(sed -n 's/^0:://p' /proc/self/cgroup)/memory.events; \
+o=$(sed -n 's/^oom_kill //p' \"$f\" 2>/dev/null); fi; \
+printf '%s %s\\n' \"$c\" \"${o:-0}\" > \"$res.tmp\" && mv \"$res.tmp\" \"$res\"; exit \"$c\"";
 
 /// O que lançar.
 #[derive(Clone, Debug)]
@@ -143,9 +148,18 @@ pub fn resfile_de(dir: &Path, id: &str, despacho: u32) -> PathBuf {
     dir.join("unidades").join(format!("{h:016x}-{despacho}.res"))
 }
 
-/// **O quê:** lê o código de saída gravado pelo invólucro. **Onde:** fim de unidade / adoção.
+/// **O quê:** lê `(código, oom_kill)` gravados pelo invólucro (`oom_kill` ausente = 0).
+/// **Onde:** fim de unidade / adoção.
+pub fn ler_resultado(resfile: &Path) -> Option<(i32, u64)> {
+    let t = std::fs::read_to_string(resfile).ok()?;
+    let mut it = t.split_whitespace();
+    let code = it.next()?.parse().ok()?;
+    Some((code, it.next().and_then(|o| o.parse().ok()).unwrap_or(0)))
+}
+
+/// **O quê:** só o código de saída. **Onde:** testes e diagnóstico.
 pub fn ler_codigo(resfile: &Path) -> Option<i32> {
-    std::fs::read_to_string(resfile).ok()?.trim().parse().ok()
+    ler_resultado(resfile).map(|r| r.0)
 }
 
 /// **O quê:** `Result` do scope systemd (`oom-kill`, `success`, ...). **Onde:** distinguir OOM.
@@ -166,7 +180,11 @@ fn limpar_scope(unidade: &str) {
 }
 
 /// **O quê:** converte código + `Result` do scope no [`Veredito`]. **Onde:** `fim_de` e adoção.
-fn veredito_de(code: i32, unidade: &str, teto_mib: u64) -> Veredito {
+fn veredito_de(code: i32, oom_kill: u64, unidade: &str, teto_mib: u64) -> Veredito {
+    if oom_kill > 0 && !unidade.is_empty() {
+        limpar_scope(unidade);
+        return Veredito::EstourouMemoria;
+    }
     if unidade.is_empty() {
         return if code == 0 { Veredito::Concluiu } else { Veredito::Falhou };
     }
@@ -212,6 +230,7 @@ impl Despachante for DespachanteProcesso {
         let (out, err) = (abre(&p.log)?, abre(&p.log)?);
         let _ = std::fs::remove_file(&p.resfile);
         let mut c = Command::new(prog);
+        c.env("OVERDEV_JAULA", if p.orcamento.is_some() { "1" } else { "0" });
         c.args(resto).stdin(Stdio::piped()).stdout(out).stderr(err).process_group(0);
         c.envs(p.env.iter().map(|(k, v)| (k, v)));
         let mut child = c.spawn().map_err(|e| format!("lançar {prog}: {e}"))?;
@@ -234,8 +253,9 @@ impl FilhoProcesso {
     /// **O quê:** traduz o status de saída em [`Fim`]. **Onde:** `tentar_esperar`.
     fn fim_de(&self, status: std::process::ExitStatus) -> Fim {
         let por_sinal = status.signal().map(|s| 128 + s);
-        let code = ler_codigo(&self.resfile).or(status.code()).or(por_sinal).unwrap_or(1);
-        let veredito = veredito_de(code, &self.unidade, self.teto_mib);
+        let (rcode, oom) = ler_resultado(&self.resfile).map_or((None, 0), |(c, o)| (Some(c), o));
+        let code = rcode.or(status.code()).or(por_sinal).unwrap_or(1);
+        let veredito = veredito_de(code, oom, &self.unidade, self.teto_mib);
         Fim::Saida(Saida { veredito, pico_mib: self.pico })
     }
 }
@@ -363,8 +383,8 @@ impl Filho for FilhoAdotado {
         if proc::vivo_verificado(self.pid, self.starttime) {
             return None;
         }
-        if let Some(code) = ler_codigo(&self.resfile) {
-            let veredito = veredito_de(code, &self.unidade, self.teto_mib);
+        if let Some((code, oom)) = ler_resultado(&self.resfile) {
+            let veredito = veredito_de(code, oom, &self.unidade, self.teto_mib);
             return Some(Fim::Saida(Saida { veredito, pico_mib: self.pico }));
         }
         if !self.unidade.is_empty() && resultado_scope(&self.unidade) == "oom-kill" {
