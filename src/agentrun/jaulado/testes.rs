@@ -154,6 +154,26 @@ fn apurar_registra_e_limpa() {
     let _ = std::fs::remove_dir_all(&od);
 }
 
+/// `apurar_com`: o callback roda ANTES de gravar; recusando, nada é gravado nem removido.
+#[test]
+fn apurar_com_recusa_deixa_para_a_proxima_ronda() {
+    let od = tmp("apurar-com");
+    let u = "schematize-p-9-0";
+    let pend = Pendente { unidade: u.into(), classe: "medio".into(), teto_mib: 1024, geracao: 0 };
+    std::fs::write(od.join(format!("jaula-{u}.pendente")), serde_json::to_string(&pend).expect("j"))
+        .expect("pend");
+    std::fs::write(od.join(format!("jaula-{u}.exit")), "137 oom-kill").expect("exit");
+    let mut vistos = 0;
+    assert!(apurar_com(&od, &mut |_| {
+        vistos += 1;
+        false
+    })
+    .is_empty());
+    assert_eq!((vistos, ler(&od).0.len()), (1, 0), "recusado: nada gravado");
+    assert_eq!(apurar_com(&od, &mut |_| true).len(), 1, "na próxima ronda entra");
+    let _ = std::fs::remove_dir_all(&od);
+}
+
 /// Wrapper: sem `--collect`, argumentos entre aspas, prompt expandido, unidade `schematize-<proj>-<seq>`.
 #[test]
 fn wrapper_jaulado_monta_o_comando() {

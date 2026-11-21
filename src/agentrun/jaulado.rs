@@ -282,6 +282,13 @@ pub fn veredito_do_exit(texto: &str, teto_mib: u64) -> Option<Veredito> {
 /// registro: não derruba nem reinicia o supervisor nem as outras unidades.
 /// **Onde:** supervisor, a cada ronda. **Efeitos:** lê/remove arquivos, anexa ao jsonl.
 pub fn apurar(od: &Path) -> Vec<Registro> {
+    apurar_com(od, &mut |_| true)
+}
+
+/// **O quê:** como [`apurar`], mas chama `antes(&registro)` ANTES de gravar no jsonl e remover os
+/// arquivos (write-ahead: o supervisor grava a transição no journal ali). Se `antes` devolve
+/// `false` a unidade fica para a próxima ronda (nada é perdido). **Onde:** supervisor.
+pub fn apurar_com(od: &Path, antes: &mut dyn FnMut(&Registro) -> bool) -> Vec<Registro> {
     let mut novos = Vec::new();
     for e in std::fs::read_dir(od).into_iter().flatten().flatten() {
         let p = e.path();
@@ -307,6 +314,9 @@ pub fn apurar(od: &Path) -> Vec<Registro> {
             &v,
             crate::nucleo::util::now_unix(),
         );
+        if !antes(&r) {
+            continue;
+        }
         match anexar(od, &r) {
             Ok(()) => {
                 for f in [&p, &pend_arq] {

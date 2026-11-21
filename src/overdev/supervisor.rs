@@ -19,6 +19,8 @@
 //! aquilo é gente, e insistir viraria laço infinito.
 
 use crate::agentrun;
+use crate::resiliencia::duravel::{Duravel, PoliticaSnapshot};
+use crate::resiliencia::modelo::Evento;
 use schematize_plataforma::seams::processos::{Modo, Processos};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -127,8 +129,14 @@ fn registrar(projeto: &Path, linha: &str) {
 /// **Efeitos:** abre terminais, escreve `supervisor.log`, dorme entre rondas.
 pub fn supervise(projeto: &Path, max: u32) -> u32 {
     let projeto: PathBuf = projeto.canonicalize().unwrap_or_else(|_| projeto.to_path_buf());
-    let mut relancamentos = 0u32;
+    let mut dur = abrir_estado(&projeto);
+    // Retomada do próprio supervisor: o teto de relançamentos sobrevive à morte dele.
+    let mut relancamentos = dur.as_ref().map_or(0, |d| d.estado().relancamentos);
     let mut sem_agente = 0u32;
+    if let Some(d) = dur.as_mut() {
+        let detalhe = crate::resiliencia::oom::proteger_orquestrador();
+        journal(&projeto, d, Evento::Observacao { tipo: "oom_adj".into(), detalhe });
+    }
     registrar(
         &projeto,
         &format!(
@@ -137,7 +145,7 @@ pub fn supervise(projeto: &Path, max: u32) -> u32 {
         ),
     );
     loop {
-        apurar_jaulas(&projeto);
+        apurar_jaulas(&projeto, dur.as_mut());
         let trabalho = tem_trabalho_de_maquina(&projeto);
         let agente = agente_vivo_em(&projeto);
         sem_agente = if agente { 0 } else { sem_agente + 1 };
@@ -154,6 +162,9 @@ pub fn supervise(projeto: &Path, max: u32) -> u32 {
                 }
                 relancamentos += 1;
                 sem_agente = 0;
+                if let Some(d) = dur.as_mut() {
+                    journal(&projeto, d, Evento::Relancamento { n: relancamentos });
+                }
                 // Unidade morta por OOM/timeout: re-decompõe (ou parkeia), nunca reexecuta igual.
                 let od = crate::paths::overdev_dir_at(&projeto);
                 let p = agentrun::jaulado::prompt_de_relancamento(&od)
@@ -181,12 +192,50 @@ fn oom_score_adj_proprio() -> i32 {
         .unwrap_or(-1)
 }
 
+/// **O quê:** abre o estado durável do supervisor (journal próprio). Falha NÃO derruba o
+/// supervisor: loga e segue sem journal. **Onde:** início de [`supervise`].
+fn abrir_estado(projeto: &Path) -> Option<Duravel> {
+    let dir = crate::resiliencia::dir_estado_supervisor(projeto);
+    match Duravel::abrir(&dir, PoliticaSnapshot::default()) {
+        Ok(d) => Some(d),
+        Err(e) => {
+            registrar(projeto, &format!("estado durável indisponível ({e}); sigo sem journal"));
+            None
+        }
+    }
+}
+
+/// **O quê:** grava a transição no journal ANTES do efeito; falha vira linha no `supervisor.log`
+/// (o supervisor segue protegendo o run). **Onde:** [`supervise`] e [`apurar_jaulas`].
+fn journal(projeto: &Path, d: &mut Duravel, ev: Evento) -> bool {
+    match d.registrar(&ev) {
+        Ok(_) => true,
+        Err(e) => {
+            registrar(projeto, &format!("journal falhou ({e}); sigo mesmo assim"));
+            false
+        }
+    }
+}
+
 /// **O quê:** apura as unidades jauladas que terminaram e loga cada morte por OOM/timeout como
-/// "unidade morta" — o supervisor segue, nem reinicia nem derruba as demais unidades.
+/// "unidade morta" — o supervisor segue, nem reinicia nem derruba as demais unidades. Cada
+/// apuração entra no journal ANTES de gravar o jsonl e remover os arquivos.
 /// **Onde:** [`supervise`], no começo de cada ronda. **Efeitos:** lê/remove `jaula-*`, escreve logs.
-fn apurar_jaulas(projeto: &Path) {
+fn apurar_jaulas(projeto: &Path, mut dur: Option<&mut Duravel>) {
     let od = crate::paths::overdev_dir_at(projeto);
-    for r in agentrun::jaulado::apurar(&od) {
+    let mut antes = |r: &agentrun::jaulado::Registro| match dur.as_deref_mut() {
+        Some(d) => {
+            let ev = Evento::JaulaApurada {
+                unidade: r.unidade.clone(),
+                veredito: r.veredito.clone(),
+                pico_mib: r.pico_mib,
+                geracao: r.geracao,
+            };
+            journal(projeto, d, ev)
+        }
+        None => true,
+    };
+    for r in agentrun::jaulado::apurar_com(&od, &mut antes) {
         if r.veredito == "oom" || r.veredito == "timeout" {
             registrar(
                 projeto,
