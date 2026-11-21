@@ -18,6 +18,42 @@ schematize-overdev hooks --repair       # regrava os hooks apontando para este b
 
 `schematize overdev …` continua funcionando: o hub encaminha.
 
+## Resiliência absoluta (0.6)
+
+Se o kernel/OOM/SIGKILL matar o overdev, ele retoma exatamente de onde parou, sem perder nem duplicar
+trabalho. O estado mora em `.overdev/estado/` (gitignored; segue a regra "ler ambos" do control-plane):
+journal WAL com `fsync` a cada evento + snapshot atômico (plataforma v0.4.0, features `persistencia`,
+`memoria`, `sistema`). **Toda** transição entra no journal ANTES do efeito (write-ahead).
+
+```
+schematize-overdev executar --plano plano.json   # despacha as unidades sob governador de memória
+schematize-overdev retomar                       # (ou `schematize-overdev --resume`) continua do journal
+schematize-overdev sistema diag [--json] [--lang pt|en]   # perfil OOM/systemd/zram/PSI + achados (só leitura)
+schematize-overdev memoria status [--json]       # leitura do host, decisão do governador, tetos recomendados
+schematize-overdev vigia unit                    # imprime a unit systemd do vigia (nada é instalado)
+schematize-overdev vigia run [-- <args>]         # delega ao `schematize-vigia` (precisa estar no PATH)
+```
+
+- **Plano** (`--plano`): JSON `{ "prefixo", "modelo", "paralelo", "margem_mib", "itens": [{ "id", "brief",
+  "tipo", "teto_mib" (ADR), "marca", "argv" }] }`. `argv` aceita `{prompt} {brief} {prefixo} {modelo} {id}`;
+  vazio = `claude -p`. O prefixo estável vai igual em todo despacho (cache de prompt).
+- **Portão**: cada unidade nasce presa num invólucro `sh` que só executa depois de `Lancada` (pid +
+  `starttime`) estar no journal; ao terminar grava `<código> <oom_kill>` num `resfile` atômico. Por isso
+  uma unidade que sobrevive ao SIGKILL do orquestrador é **reanexada** (e, se já terminou, o resultado é
+  lido sem re-executar); uma que nunca foi liberada simplesmente não roda.
+- **Reconciliação**: PID reciclado é detectado por `starttime` e nunca é morto; `--matar-orfas` mata só
+  as unidades registradas. `Entregue` nunca regride. Nunca pergunta: esgotou a escada, parkeia (`- [~]`).
+- **Governador**: admissão por reserva vs margem do host (`sistema::margem_segura`), estrangula sob PSI,
+  `PedirEncolher`/`PedirParar` antes do teto duro; picos por tipo em `picos.hist` recomendam o teto
+  (p95 x 1,25, clamp 500-2048 MiB; o `teto_mib` por ADR do plano manda). Eventos do monitor viram linhas
+  `aviso` em `jaulas.jsonl` e observações no journal. O orquestrador tenta `oom_score_adj` baixo (sem erro
+  se não for permitido).
+- **Estado corrompido** (bit-flip/truncado): cai no `.prev`/replay e reporta; sem saída, vai para
+  `estado/corrompido-<ts>/` e recomeça. Nunca panic.
+- **Testes**: `PERSIST_SEED=<n> cargo test --test resiliencia_kill -- --nocapture` (30 iterações de SIGKILL
+  aleatório sobre 20 unidades; `OD_KILL_ITER` muda o nº). `comando_que_falha_traz_o_stderr` é ambiental:
+  rode com `TMPDIR=/tmp`.
+
 ## Os hooks, e por que a ordem da migração importou
 
 O Claude Code chama `guard` a **cada chamada de ferramenta** e `check` a **cada parada**. Uma

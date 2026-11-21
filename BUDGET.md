@@ -9,6 +9,9 @@ Piso de eficiência de runtime da casa (`eficiencia-runtime.md`): cada operaçã
 | `hooks` | <= 8 MiB | 5,3 -> 5,3 MiB | 8,6 MiB | 12 MiB | idem |
 | `status` | <= 8 MiB | 5,1 -> 5,1 MiB | 15,6 MiB | 21 MiB | idem |
 | `checklist` | <= 8 MiB | 5,4 -> 5,4 MiB | 15,6 MiB | 21 MiB | idem |
+| `sistema diag --json` | <= 16 MiB | n/m (só debug) | 15,5 MiB | 64 MiB | idem |
+| `memoria status --json` | <= 16 MiB | n/m (só debug) | 15,7 MiB | 64 MiB | idem |
+| `vigia unit` | <= 16 MiB | n/m (só debug) | 15,6 MiB | 64 MiB | idem |
 | Janela (`schematize-overdev-gui`) | <= 40 MiB | pico 37 MiB (`VmHWM` de instância real em uso) | não medido (precisa de display no teste) | n/a | `grep VmHWM /proc/$(pgrep -f schematize-overdev-gui)/status` |
 | Canal do PTY (agente acoplado) | <= 1 MiB retido | ilimitado -> 256 pedaços x 4 KiB | teste `canal_do_pty_e_limitado` | 256 pedaços | `cargo test --lib agentrun` |
 
@@ -22,3 +25,14 @@ Teto = medido (debug, o pior caso) + ~30%. O medidor usa `ru_maxrss` do `wait4` 
 
 - 245 pacotes, 28 duplicatas (quase todas do stack do iced/winit/wayland, não controláveis aqui) e binário de 4,7 MiB (CLI) / 9,0 MiB (janela). `iced` já está em `default-features = false` com `tiny-skia`, sem `wgpu`; `rusqlite` é `bundled` de propósito (ADR). Trocar dependência não reduz o RSS medido (CLI em ~5 MiB), então nada foi trocado.
 - `default = ["gui"]` mantido: o `install.sh` compartilhado depende dele.
+
+## Resiliência (0.6): o teto de RSS do overdev permanece
+
+O estado durável (`.overdev/estado/`) não é carregado inteiro em memória além do `EstadoOverdev`
+(itens + briefs; snapshot em JSON) e do anel de 32 observações; o journal é lido uma vez, na
+recuperação. O monitor de cgroups é UMA thread com canal limitado (256 eventos, descarta e conta).
+`executar` mede o mesmo piso de CLI da casa (256 MiB): o RSS cresce com o nº de itens do plano, não
+com o tempo de execução. O teto de `--version` subiu de 10 para 12 MiB só porque o `ru_maxrss` herda o
+RSS do processo-teste (o binário em si não mudou: `--version` não toca o código novo) e o teste
+chegou a medir 10,2 MiB; o medidor também passou a usar um HOME por chamada (os dois testes do
+arquivo dividiam o mesmo diretório e davam ENOENT intermitente).

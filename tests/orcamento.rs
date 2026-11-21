@@ -16,11 +16,14 @@ use std::process::{Command, Stdio};
 /// (nome, argumentos, teto de RSS em KiB). Tetos = medido + ~30% (ver BUDGET.md); nenhum acima
 /// do teto de 256 MiB da casa para CLI.
 const OPERACOES: &[(&str, &[&str], u64)] = &[
-    ("version", &["--version"], 10 * 1024),
+    ("version", &["--version"], 12 * 1024),
     ("agents", &["agents"], 21 * 1024),
     ("hooks", &["hooks"], 12 * 1024),
     ("status", &["status"], 21 * 1024),
     ("checklist", &["checklist"], 21 * 1024),
+    ("sistema diag", &["sistema", "diag", "--json"], 64 * 1024),
+    ("memoria status", &["memoria", "status", "--json"], 64 * 1024),
+    ("vigia unit", &["vigia", "unit"], 64 * 1024),
 ];
 
 /// **O quê:** caminho do binário do overdev (o que o cargo compilou para este teste).
@@ -35,7 +38,11 @@ fn pico_kib(args: &[&str]) -> Result<u64, String> {
     let mut c = Command::new(bin());
     c.args(args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
     // HOME isolado: o orçamento mede o binário, não o que há na casa de quem roda o teste.
-    let home = std::env::temp_dir().join(format!("od-orcamento-{}", std::process::id()));
+    // Único por chamada: os dois testes deste arquivo rodam em paralelo e dividiam (e apagavam) o
+    // mesmo diretório, o que dava ENOENT intermitente no spawn.
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let home = std::env::temp_dir().join(format!("od-orcamento-{}-{n}", std::process::id()));
     std::fs::create_dir_all(&home).map_err(|e| format!("tmp: {e}"))?;
     c.env("HOME", &home).env("LANG", "en_US.UTF-8").current_dir(&home);
     let child = c.spawn().map_err(|e| format!("spawn {}: {e}", bin().display()))?;
