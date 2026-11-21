@@ -34,8 +34,8 @@ pub mod archive;
 pub mod config;
 pub mod otimiza;
 pub mod overdev;
-pub mod padroes;
 pub mod overdevdb;
+pub mod padroes;
 pub mod panel;
 pub mod paths;
 #[cfg(test)]
