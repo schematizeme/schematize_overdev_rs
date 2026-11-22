@@ -53,8 +53,12 @@ de resiliência) e o retorno é `i32`, não `Result<(), String>`.
 `crate::handoff_vivo::unit::unit_systemd()` devolve o texto (nada é instalado). O instalador deve
 ajustar `WorkingDirectory=` para a pasta do projeto.
 
-## 6. Ressalva dos hooks do overdev
+## 6. Hooks do usuário e isolamento do `claude -p`
 
-O `claude -p` roda num cwd neutro e com `SCHEMATIZE_HANDOFF_VIVO=1` no ambiente. Hooks do usuário em
-`~/.claude/settings.json` (Stop do overdev) ainda valem; se um dia o `check` bloquear a parada de uma
-sessão headless, ele deve ignorar quando essa variável estiver definida.
+Validado em uso real (relatório `2026-11-22-handoff-uso-real.md`). O `claude -p` roda num cwd neutro, com
+`SCHEMATIZE_HANDOFF_VIVO=1` e `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1`, e flags de isolamento
+(`--setting-sources project --disable-slash-commands --tools "" --strict-mcp-config --system-prompt`):
+não carrega os hooks do usuário (SessionStart/Stop), CLAUDE.md global, skills nem MCP (~46 mil -> ~640
+tokens por chamada). `--bare` NÃO serve (exige `ANTHROPIC_API_KEY`). O `check` do overdev libera a parada
+sob a variável, mas só nos binários reinstalados: os de `~/.cargo/bin` antigos ainda bloqueiam se o cwd
+tiver overdev ativo (o cwd neutro os mantém inertes).

@@ -24,6 +24,26 @@ Regras: no máximo 1500 caracteres; nunca faça perguntas; se não houver inform
 nunca inclua segredos, chaves, tokens, senhas nem e-mails.\n\
 --- estado atual do workspace (somente leitura) ---\n";
 
+/// Flags que isolam o `claude -p` do ambiente do usuário (medido em uso real: ~46 mil tokens de
+/// entrada por chamada com settings/hooks/CLAUDE.md/skills/MCP carregados, ~640 com isto). NÃO usa
+/// `--bare` (exige `ANTHROPIC_API_KEY`; quebra o login OAuth). `--setting-sources project` não
+/// carrega os hooks do usuário (SessionStart/Stop); o cwd neutro não tem settings de projeto.
+pub const FLAGS_ISOLAMENTO: [&str; 8] = [
+    "--setting-sources",
+    "project",
+    "--disable-slash-commands",
+    "--tools",
+    "",
+    "--strict-mcp-config",
+    "--system-prompt",
+    "Você escreve notas de handoff de projeto. Siga exatamente o formato pedido.",
+];
+
+/// Ambiente extra do `claude -p`: marca a sessão headless e desliga a descoberta de `CLAUDE.md`
+/// (a global do usuário tem ~9 mil tokens que o handoff não usa).
+pub const ENV_CLAUDE: [(&str, &str); 2] =
+    [("SCHEMATIZE_HANDOFF_VIVO", "1"), ("CLAUDE_CODE_DISABLE_CLAUDE_MDS", "1")];
+
 /// Limite do resumo enviado (bytes).
 const MAX_RESUMO: usize = 8000;
 
@@ -64,11 +84,12 @@ fn montar_argv(cfg: &Config, unidade: &str) -> Result<(Vec<String>, Option<u64>)
         return Ok((cmd.clone(), Some(cfg.claude_mem_mib)));
     }
     let claude = crate::agentrun::claude_path().ok_or("`claude` não encontrado no PATH")?;
-    let argv: Vec<String> =
+    let mut argv: Vec<String> =
         [claude.to_string_lossy().as_ref(), "-p", "--model", &cfg.modelo, "--max-turns", "1"]
             .iter()
             .map(|s| (*s).to_string())
             .collect();
+    argv.extend(FLAGS_ISOLAMENTO.iter().map(|s| (*s).to_string()));
     let orc = crate::agentrun::jaulado::orcamento_para(TipoExecucao::AgenteLlm);
     match detectar_backend() {
         Backend::SystemdScope => Ok((comando_jaulado(&orc, &argv, unidade), None)),
@@ -98,7 +119,8 @@ pub fn executar(cfg: &Config, prompt: &str, agora: u64, ultimo_uso: Option<u64>)
         Ok(x) => x,
         Err(e) => return falha(e, false),
     };
-    let env = [("SCHEMATIZE_HANDOFF_VIVO".to_string(), "1".to_string())];
+    let env: Vec<(String, String)> =
+        ENV_CLAUDE.iter().map(|(k, v)| ((*k).to_string(), (*v).to_string())).collect();
     let max_bruto = cfg.max_notas.saturating_mul(4).max(4096);
     let ped = Pedido {
         argv: &argv,
@@ -144,6 +166,13 @@ pub fn executar(cfg: &Config, prompt: &str, agora: u64, ultimo_uso: Option<u64>)
 #[cfg(test)]
 mod testes {
     use super::*;
+
+    #[test]
+    fn isolamento_nao_usa_bare_e_marca_a_sessao() {
+        assert!(!FLAGS_ISOLAMENTO.contains(&"--bare"));
+        assert!(FLAGS_ISOLAMENTO.windows(2).any(|w| w == ["--setting-sources", "project"]));
+        assert!(ENV_CLAUDE.contains(&("SCHEMATIZE_HANDOFF_VIVO", "1")));
+    }
 
     #[test]
     fn prompt_tem_prefixo_estavel_e_trunca() {
