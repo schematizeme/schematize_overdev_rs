@@ -5,16 +5,37 @@
 //! **Onde:** o orquestrador chama `claude -p` como processo e consulta estas decisões antes de
 //! (re)lançar uma unidade. Nada aqui faz I/O de rede nem lança processo.
 //!
-//! FORA (exigem API Messages, inexistentes em `claude -p`): IA-18 (Messages API/Batch,
-//! programmatic tool calling, context editing). Também fora por serem I/O/processo:
-//! IA-02 supervisor/backoff, IA-05 flags, IA-10 cgroup, IA-19 worktree.
+//! Itens do segundo lote (2026-11-22): IA-03 `prompt`, IA-05 `limites`, IA-06 `escalonado`,
+//! IA-08 `grupos`, IA-09 `perfil`, IA-10 `paralelismo`, IA-11 `notes`, IA-14 `saida`,
+//! IA-15 `gate`, IA-17 `eval`, IA-19 `isolamento`; fiação em `comando`/`config`; preços em
+//! `precos`. IA-18 (`mensagens_api`) é STUB: exige Messages API paga e NÃO é chamada.
+//!
+//! FORA por serem I/O/processo (já cobertos em `agentrun`/`resiliencia`): IA-02 supervisor/backoff
+//! e a jaula cgroup de IA-10.
 
 pub mod cache;
 pub mod cascata;
+pub mod comando;
+pub mod config;
 pub mod contexto;
+pub mod escalonado;
+pub mod esquema;
+pub mod eval;
+pub mod gate;
+pub mod grupos;
+pub mod isolamento;
 pub mod ledger;
+pub mod limites;
 pub mod loops;
+pub mod mensagens_api;
+pub mod notes;
+pub mod paralelismo;
+pub mod perfil;
+pub mod precos;
+pub mod prompt;
 pub mod retomada;
+pub mod saida;
+pub mod sha256;
 
 /// Hash FNV-1a de 64 bits, determinístico entre versões do Rust (ao contrário de `DefaultHasher`).
 ///

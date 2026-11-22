@@ -147,6 +147,13 @@ pub fn delegar(ag: &Agentes, pedido: &Pedido) -> Result<Desfecho, ErroAgentes> {
     let log = std::fs::File::create(&f_log).map_err(|e| io(&f_log, e))?;
 
     let argv = linha_de_comando(papel.motor, &papel.modelo, &pedido.projeto, &pedido.brief);
+    // Otimizações de IA (`.overdev/otimiza.toml`, tudo desligado por padrão): só no Motor Claude.
+    let argv = if matches!(papel.motor, Motor::Claude) {
+        crate::otimiza::comando::aplicar_do_projeto(argv, &pedido.projeto)
+            .map_err(ErroAgentes::Execucao)?
+    } else {
+        argv
+    };
     let t0 = Instant::now();
     let status = std::process::Command::new(&bin)
         .args(&argv)
@@ -162,14 +169,20 @@ pub fn delegar(ag: &Agentes, pedido: &Pedido) -> Result<Desfecho, ErroAgentes> {
         std::fs::read_to_string(&f_saida).unwrap_or_else(|e| format!("(saída ilegível: {e})"));
     let txt_log =
         std::fs::read_to_string(&f_log).unwrap_or_else(|e| format!("(log ilegível: {e})"));
+    let falha_schema = if matches!(papel.motor, Motor::Claude) && status.success() {
+        crate::otimiza::comando::falha_de_saida(&pedido.projeto, &txt_saida)
+            .map_err(ErroAgentes::Execucao)?
+    } else {
+        None
+    };
     Ok(Desfecho::Executado(Resultado {
-        ok: status.success(),
+        ok: status.success() && falha_schema.is_none(),
         papel: pedido.papel.clone(),
         motor: papel.motor,
         modelo: papel.modelo.clone(),
         rc: status.code().unwrap_or(-1),
         duracao_ms,
-        saida_resumo: resumo(&txt_saida, &txt_log),
+        saida_resumo: falha_schema.unwrap_or_else(|| resumo(&txt_saida, &txt_log)),
         arquivos: format!("{}/{base}.{{brief.md,saida.json,log}}", dir.display()),
     }))
 }
