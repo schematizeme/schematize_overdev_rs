@@ -160,8 +160,11 @@ fn apurar_com_recusa_deixa_para_a_proxima_ronda() {
     let od = tmp("apurar-com");
     let u = "schematize-p-9-0";
     let pend = Pendente { unidade: u.into(), classe: "medio".into(), teto_mib: 1024, geracao: 0 };
-    std::fs::write(od.join(format!("jaula-{u}.pendente")), serde_json::to_string(&pend).expect("j"))
-        .expect("pend");
+    std::fs::write(
+        od.join(format!("jaula-{u}.pendente")),
+        serde_json::to_string(&pend).expect("j"),
+    )
+    .expect("pend");
     std::fs::write(od.join(format!("jaula-{u}.exit")), "137 oom-kill").expect("exit");
     let mut vistos = 0;
     assert!(apurar_com(&od, &mut |_| {

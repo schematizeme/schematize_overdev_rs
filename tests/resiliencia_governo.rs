@@ -44,11 +44,15 @@ fn governador_estrangula_sob_psi_simulado() {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let log = d2.join("exec.log");
-        let mut d = Duravel::abrir(&d2.join("ov/estado"), PoliticaSnapshot::default()).expect("abrir");
+        let mut d =
+            Duravel::abrir(&d2.join("ov/estado"), PoliticaSnapshot::default()).expect("abrir");
         let itens = ["a", "b", "c"].iter().map(|i| item(i, &log)).collect();
-        d.registrar(&Evento::Plano { prefixo: String::new(), modelo_base: "sonnet".into(), itens }).unwrap();
+        d.registrar(&Evento::Plano { prefixo: String::new(), modelo_base: "sonnet".into(), itens })
+            .unwrap();
         let ctl = Controle::new_fixture(&raiz);
-        let r = Executor::novo(d, ctl, Box::new(DespachanteProcesso), Opcoes::default(), d2.join("ov")).rodar();
+        let r =
+            Executor::novo(d, ctl, Box::new(DespachanteProcesso), Opcoes::default(), d2.join("ov"))
+                .rodar();
         tx.send(r.map(|r| r.entregues).map_err(|e| e.to_string())).ok();
     });
     std::thread::sleep(Duration::from_millis(700));
@@ -59,7 +63,10 @@ fn governador_estrangula_sob_psi_simulado() {
     assert_eq!(inicios(&dir).len(), 3);
     let d = Duravel::abrir(&dir.join("ov/estado"), PoliticaSnapshot::default()).expect("reabrir");
     let obs = d.estado().observacoes.join("\n");
-    assert!(obs.contains("estrangular") && obs.contains("liberar"), "journal sem as observações:\n{obs}");
+    assert!(
+        obs.contains("estrangular") && obs.contains("liberar"),
+        "journal sem as observações:\n{obs}"
+    );
     let jl = std::fs::read_to_string(dir.join("ov/jaulas.jsonl")).unwrap_or_default();
     assert!(jl.contains("estrangular"), "jaulas.jsonl sem o evento do governador");
 }
@@ -121,7 +128,11 @@ fn oom_de_uma_unidade_com_orquestrador_vivo() {
     assert_eq!(e.itens["ok"].status, StatusItem::Entregue);
     assert_eq!(e.itens["oom"].status, StatusItem::Parkeado);
     let motivo = e.itens["oom"].motivo_park.clone().unwrap_or_default();
-    assert!(motivo.contains("EstourouMemoria"), "motivo: {motivo} / {:?}", e.itens["oom"].historico);
+    assert!(
+        motivo.contains("EstourouMemoria"),
+        "motivo: {motivo} / {:?}",
+        e.itens["oom"].historico
+    );
     let jl = std::fs::read_to_string(dir.join("ov/jaulas.jsonl")).expect("jaulas.jsonl");
     assert!(jl.contains("\"veredito\":\"oom\""), "sem veredito oom no jaulas.jsonl:\n{jl}");
     assert!(e.itens["oom"].geracao >= 1, "deveria ter re-decomposto antes de parkear");

@@ -76,7 +76,11 @@ fn projeto_com_item_aberto(nome: &str) -> PathBuf {
     let d = tmp(nome);
     let od = d.join(".schematize/overdev");
     std::fs::create_dir_all(&od).expect("od");
-    std::fs::write(od.join("state.json"), r#"{"mode":"active","max_iters":200,"objetivo":"t","started":0}"#).unwrap();
+    std::fs::write(
+        od.join("state.json"),
+        r#"{"mode":"active","max_iters":200,"objetivo":"t","started":0}"#,
+    )
+    .unwrap();
     std::fs::write(od.join("CHECKLIST.md"), "- [ ] trabalho aberto\n").unwrap();
     d
 }

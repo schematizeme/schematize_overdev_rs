@@ -38,7 +38,8 @@ fn filho_martelador() {
     let dir = PathBuf::from(dir);
     let pol = PoliticaSnapshot { cada_eventos: 2, cada_segundos: 1 };
     let mut d = Duravel::abrir(&dir.join("estado"), pol).expect("abrir no filho");
-    let mut ack = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("ack")).expect("ack");
+    let mut ack =
+        std::fs::OpenOptions::new().create(true).append(true).open(dir.join("ack")).expect("ack");
     for _ in 0..1_000_000 {
         let k = d.seq() + 1;
         d.registrar(&evento(k)).expect("registrar no filho");
@@ -65,7 +66,11 @@ fn ultimo_segmento(estado: &Path) -> Option<PathBuf> {
 fn confere_consistente(dir: &Path, ctx: &str) -> u64 {
     let d = Duravel::abrir(&dir.join("estado"), PoliticaSnapshot::default())
         .unwrap_or_else(|e| panic!("{ctx}: não abriu: {e}"));
-    assert!(d.abertura.quarentena.is_none(), "{ctx}: kill virou quarentena: {:?}", d.abertura.motivo_quarentena);
+    assert!(
+        d.abertura.quarentena.is_none(),
+        "{ctx}: kill virou quarentena: {:?}",
+        d.abertura.motivo_quarentena
+    );
     let (e, seq) = (d.estado(), d.seq());
     assert_eq!(e.itens.len() as u64, seq, "{ctx}: itens != seq");
     for k in 1..=seq {
@@ -107,7 +112,10 @@ fn kill_durante_gravacao_de_journal_e_snapshot() {
         }
         let seq = confere_consistente(&dir, &format!("it{it} (seed {seed})"));
         if !chop {
-            assert!(seq >= acked, "it{it}: evento CONFIRMADO perdido (seq {seq} < ack {acked}, seed {seed})");
+            assert!(
+                seq >= acked,
+                "it{it}: evento CONFIRMADO perdido (seq {seq} < ack {acked}, seed {seed})"
+            );
         }
         maior = maior.max(seq);
     }
@@ -129,7 +137,11 @@ fn estado_pronto(dir: &Path, n: u64) -> EstadoOverdev {
 /// **O quê:** reabre e devolve (estado, aviso do snapshot, bytes descartados). **Onde:** testes (f).
 fn reabrir(dir: &Path) -> (EstadoOverdev, Option<String>, u64) {
     let d = Duravel::abrir(&dir.join("estado"), PoliticaSnapshot::default()).expect("reabrir");
-    (d.estado().clone(), d.abertura.relatorio.snapshot_aviso.clone(), d.abertura.relatorio.bytes_descartados)
+    (
+        d.estado().clone(),
+        d.abertura.relatorio.snapshot_aviso.clone(),
+        d.abertura.relatorio.bytes_descartados,
+    )
 }
 
 /// (f) snapshot atual com bit-flip ou truncado: cai no `.prev`, reporta e o estado é IDÊNTICO.
@@ -197,11 +209,15 @@ fn esquema_incompativel_vai_para_quarentena() {
     estado_pronto(&dir, 5);
     let s = Snapshot { versao_esquema: 99, seq: 5, dados: b"{}".to_vec() };
     s.gravar(&dir.join("estado")).expect("gravar");
-    let d = Duravel::abrir(&dir.join("estado"), PoliticaSnapshot::default()).expect("não pode falhar");
+    let d =
+        Duravel::abrir(&dir.join("estado"), PoliticaSnapshot::default()).expect("não pode falhar");
     let q = d.abertura.quarentena.clone().expect("quarentena");
     assert!(d.abertura.motivo_quarentena.as_deref().is_some_and(|m| m.contains("v99")));
     assert!(d.estado().itens.is_empty() && q.is_dir());
-    assert!(std::fs::read_dir(q).expect("q").count() >= 1, "os arquivos originais ficaram na quarentena");
+    assert!(
+        std::fs::read_dir(q).expect("q").count() >= 1,
+        "os arquivos originais ficaram na quarentena"
+    );
 }
 
 /// (f) fuzz: 300 bit-flips aleatórios em qualquer arquivo de estado nunca causam panic, e o que
@@ -212,15 +228,19 @@ fn fuzz_de_bitflips_nunca_da_panic() {
     let mut rng = Rng::novo(seed);
     let base = tmp("fuzz-base");
     estado_pronto(&base, 12);
-    let arqs: Vec<PathBuf> = std::fs::read_dir(base.join("estado")).expect("ls").flatten().map(|e| e.path()).collect();
-    let arqs: Vec<PathBuf> = arqs.into_iter().filter(|p| p.file_name().is_some_and(|n| n != "journal.lock")).collect();
+    let arqs: Vec<PathBuf> =
+        std::fs::read_dir(base.join("estado")).expect("ls").flatten().map(|e| e.path()).collect();
+    let arqs: Vec<PathBuf> =
+        arqs.into_iter().filter(|p| p.file_name().is_some_and(|n| n != "journal.lock")).collect();
     for i in 0..300 {
         let w = tmp("fuzz-w");
         std::fs::create_dir_all(w.join("estado")).expect("w");
         for p in &arqs {
             std::fs::copy(p, w.join("estado").join(p.file_name().expect("nome"))).expect("copiar");
         }
-        let alvo = w.join("estado").join(arqs[rng.ate(arqs.len() as u64) as usize].file_name().expect("n"));
+        let alvo = w
+            .join("estado")
+            .join(arqs[rng.ate(arqs.len() as u64) as usize].file_name().expect("n"));
         let mut b = std::fs::read(&alvo).expect("ler");
         let pos = rng.ate(b.len() as u64) as usize;
         b[pos] ^= 1 << rng.ate(8);

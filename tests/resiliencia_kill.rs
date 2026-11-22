@@ -20,22 +20,33 @@ const UNIDADES: usize = 20;
 /// **O quê:** abre o estado (após o kill: o lock já foi solto pelo kernel) e devolve os ids
 /// `Entregue`. **Onde:** invariante "Entregue nunca é re-executada".
 fn entregues(dir: &Path) -> BTreeSet<String> {
-    let d = Duravel::abrir(&dir.join("ov/estado"), PoliticaSnapshot::default()).expect("abrir estado");
+    let d =
+        Duravel::abrir(&dir.join("ov/estado"), PoliticaSnapshot::default()).expect("abrir estado");
     let e = d.estado();
-    e.itens.iter().filter(|(_, i)| i.status == StatusItem::Entregue).map(|(k, _)| k.clone()).collect()
+    e.itens
+        .iter()
+        .filter(|(_, i)| i.status == StatusItem::Entregue)
+        .map(|(k, _)| k.clone())
+        .collect()
 }
 
 /// **O quê:** projeção LÓGICA final do estado (a que deve ser idêntica com ou sem kill).
 /// **Onde:** comparação com a execução de referência.
 fn logico(dir: &Path) -> Vec<String> {
-    let d = Duravel::abrir(&dir.join("ov/estado"), PoliticaSnapshot::default()).expect("abrir estado");
+    let d =
+        Duravel::abrir(&dir.join("ov/estado"), PoliticaSnapshot::default()).expect("abrir estado");
     assert!(d.estado().concluido(), "estado final não concluído");
     d.estado().resumo_logico()
 }
 
 /// **O quê:** confere que nenhuma unidade do conjunto `ja` iniciou de novo desde `antes`.
 /// **Onde:** a cada fim de fase do laço de kills.
-fn sem_reexecucao(ja: &BTreeSet<String>, antes: &BTreeMap<String, usize>, agora: &BTreeMap<String, usize>, ctx: &str) {
+fn sem_reexecucao(
+    ja: &BTreeSet<String>,
+    antes: &BTreeMap<String, usize>,
+    agora: &BTreeMap<String, usize>,
+    ctx: &str,
+) {
     for id in ja {
         assert_eq!(antes.get(id), agora.get(id), "{ctx}: a unidade Entregue {id} foi RE-EXECUTADA");
     }
@@ -113,7 +124,8 @@ fn confere_final(it: usize, dir: &Path, plano: &Path, base: &[String]) {
 fn e2e_sigkill_aleatorio_retoma_sem_perder_nem_duplicar() {
     let seed = semente("kill");
     let mut rng = Rng::novo(seed);
-    let n_iter: usize = std::env::var("OD_KILL_ITER").ok().and_then(|v| v.parse().ok()).unwrap_or(30);
+    let n_iter: usize =
+        std::env::var("OD_KILL_ITER").ok().and_then(|v| v.parse().ok()).unwrap_or(30);
     let base = referencia();
     let (mut total_kills, mut reanexos, mut devolvidas) = (0, 0, 0);
     for it in 0..n_iter {
@@ -159,7 +171,8 @@ fn orfa_sobrevivente_e_reanexada_sem_reexecutar() {
 #[test]
 fn orfa_com_matar_orfas_morre_e_e_redespachada() {
     let (dir, plano) = orquestrador_morto_com_unidade_em_voo("orfa-mata");
-    let (code, out, err) = esperar(lanca(&dir, &plano, true, &["--matar-orfas"]), Duration::from_secs(30));
+    let (code, out, err) =
+        esperar(lanca(&dir, &plano, true, &["--matar-orfas"]), Duration::from_secs(30));
     assert_eq!(code, Some(0), "{out}\n{err}");
     assert!(out.contains("Matar") && out.contains("\"devolvidas\":1"), "{out}");
     assert_eq!(inicios(&dir)["u00"], 2, "mata a órfã e re-executa uma vez");

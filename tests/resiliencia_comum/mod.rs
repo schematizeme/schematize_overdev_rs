@@ -29,7 +29,9 @@ pub fn tmp(nome: &str) -> PathBuf {
 /// **Onde:** testes aleatórios (reproduzir = exportar `PERSIST_SEED`).
 pub fn semente(teste: &str) -> u64 {
     let s = std::env::var("PERSIST_SEED").ok().and_then(|v| v.parse().ok()).unwrap_or_else(|| {
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64)
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(1, |d| d.as_nanos() as u64)
     });
     eprintln!("[{teste}] PERSIST_SEED={s}");
     s
@@ -69,7 +71,11 @@ pub fn lanca(dir: &Path, plano: &Path, resume: bool, extra: &[&str]) -> Child {
         c.arg("--resume");
     }
     c.env("HOME", dir).env("OVERDEV_SNAPSHOT_EVENTOS", "7");
-    c.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().expect("spawn overdev")
+    c.stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn overdev")
 }
 
 /// **O quê:** SIGKILL só no pid do filho (nunca em grupo) e colhe o zumbi. **Onde:** testes.
@@ -95,7 +101,11 @@ pub fn esperar(mut c: Child, limite: Duration) -> (Option<i32>, String, String) 
         panic!("o overdev não terminou em {limite:?}");
     }
     let o = c.wait_with_output().expect("saída");
-    (o.status.code(), String::from_utf8_lossy(&o.stdout).into(), String::from_utf8_lossy(&o.stderr).into())
+    (
+        o.status.code(),
+        String::from_utf8_lossy(&o.stdout).into(),
+        String::from_utf8_lossy(&o.stderr).into(),
+    )
 }
 
 /// **O quê:** quantas vezes cada unidade INICIOU (linhas `inicio <id>` do log). **Onde:** testes.
