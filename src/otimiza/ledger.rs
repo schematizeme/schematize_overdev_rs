@@ -87,13 +87,18 @@ pub fn preco_do_modelo(modelo: &str) -> Option<Preco> {
 /// `None` para modelo desconhecido (não chuta custo). Satura em `u64::MAX`.
 /// **Onde:** ao montar o `Registro`.
 pub fn custo_micro_usd(modelo: &str, u: &Uso) -> Option<u64> {
-    let p = preco_do_modelo(modelo)?;
+    preco_do_modelo(modelo).map(|p| custo_com_preco(p, u))
+}
+
+/// Custo em micro-USD para um preço dado (mesma fórmula de [`custo_micro_usd`]); satura em `u64::MAX`.
+/// **Onde:** `custo_micro_usd` (tabela embutida) e `precos::TabelaPrecos` (tabela do arquivo).
+pub fn custo_com_preco(p: Preco, u: &Uso) -> u64 {
     let (i, o) = (u128::from(p.input), u128::from(p.output));
     let tot = u128::from(u.input) * i * 100
         + u128::from(u.output) * o * 100
         + u128::from(u.cache_read) * i * 10
         + u128::from(u.cache_write) * i * 125;
-    Some(u64::try_from(tot / 100).unwrap_or(u64::MAX))
+    u64::try_from(tot / 100).unwrap_or(u64::MAX)
 }
 
 /// Uma linha do ledger.
